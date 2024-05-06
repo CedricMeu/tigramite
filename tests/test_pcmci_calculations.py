@@ -217,7 +217,7 @@ def test_pc_stable(a_run_pc_stable):
     assert_graphs_equal(parents, true_parents)
 
 
-# pc_parallel TESTING ############################################################
+# pc_parallel_inner TESTING ############################################################
 @pytest.fixture(
     params=[
         # Keep parameters for the pc_parallel algorithm here
@@ -229,19 +229,19 @@ def test_pc_stable(a_run_pc_stable):
         # (0.05,      3,              1,        False)
     ]
 )
-def a_pc_parallel_params(request):
+def a_pc_parallel_inner_params(request):
     # Return the parameters for the pc_parallel test
     return request.param
 
 
 @pytest.fixture()
-def a_run_pc_parallel(a_pcmci, a_pc_parallel_params):
+def a_run_pc_parallel_inner(a_pcmci, a_pc_parallel_inner_params):
     # Unpack the pcmci, true parents, and common parameters
     pcmci, true_parents, tau_min, tau_max, select_links = a_pcmci
     # Unpack the pc_parallel parameters
-    pc_alpha, max_conds_dim, max_combinations, save_iter = a_pc_parallel_params
+    pc_alpha, max_conds_dim, max_combinations, save_iter = a_pc_parallel_inner_params
     # Run PC stable
-    pcmci.run_pc_parallel(
+    pcmci.run_pc_parallel_inner(
         link_assumptions=None,
         tau_min=tau_min,
         tau_max=tau_max,
@@ -254,12 +254,12 @@ def a_run_pc_parallel(a_pcmci, a_pc_parallel_params):
     return pcmci.all_parents, true_parents
 
 
-def test_pc_parallel(a_run_pc_parallel):
+def test_pc_parallel_inner(a_run_pc_parallel_inner):
     """
     Test the pc_parallel algorithm and check it calculates the correct parents.
     """
     # Unpack the calculated and true parents
-    parents, true_parents = a_run_pc_parallel
+    parents, true_parents = a_run_pc_parallel_inner
     # Ensure they are the same
     assert_graphs_equal(parents, true_parents)
 
@@ -343,9 +343,9 @@ def test_pcmci(a_run_pcmci):
     assert_graphs_equal(parents, true_parents)
 
 
-# PCMCI-Parallel TESTING ################################################################
+# PCMCI-Parallel-Inner TESTING ################################################################
 @pytest.fixture()
-def a_run_pcmci_parallel(a_pcmci, a_pc_parallel_params, a_mci_params):
+def a_run_pcmci_parallel_inner(a_pcmci, a_pc_parallel_inner_params, a_mci_params):
     # Unpack the pcmci and the true parents, and common parameters
     pcmci, true_parents, tau_min, tau_max, select_links = a_pcmci
     # Unpack the pc_stable parameters
@@ -354,11 +354,11 @@ def a_run_pcmci_parallel(a_pcmci, a_pc_parallel_params, a_mci_params):
         max_conds_dim,
         max_combinations,
         save_iter,
-    ) = a_pc_parallel_params
+    ) = a_pc_parallel_inner_params
     # Unpack the MCI parameters
     alpha_level, max_conds_px, max_conds_py = a_mci_params
     # Run the PCMCI algorithm with the given parameters
-    results = pcmci.run_pcmci_parallel(
+    results = pcmci.run_pcmci_parallel_inner(
         link_assumptions=None,
         tau_min=tau_min,
         tau_max=tau_max,
@@ -374,12 +374,12 @@ def a_run_pcmci_parallel(a_pcmci, a_pc_parallel_params, a_mci_params):
     return _get_parents_from_results(pcmci, results), true_parents
 
 
-def test_pcmci_parallel(a_run_pcmci_parallel):
+def test_pcmci_parallel_inner(a_run_pcmci_parallel_inner):
     """
     Test the pcmci algorithm and check it calculates the correct parents.
     """
     # Unpack the calculated and true parents
-    parents, true_parents = a_run_pcmci_parallel
+    parents, true_parents = a_run_pcmci_parallel_inner
     # Ensure they are the same
     assert_graphs_equal(parents, true_parents)
 

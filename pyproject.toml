@@ -1,7 +1,7 @@
 [[tool.poetry.source]]
 name = "pypi-public"
 url = "https://pypi.org/simple/"
-priority = "default"
+priority = "primary"
 
 [tool.poetry]
 name = "tigramite"
