@@ -52,18 +52,18 @@ class PCMCIbase:
         Time series sample length of dataset(s).
     """
 
-    def __init__(self, dataframe, cond_ind_test, verbosity=0):
+    def __init__(self, dataframe, pc, verbosity=0):
         # Set the data for this iteration of the algorithm
         self.dataframe = dataframe
         # Set the conditional independence test to be used
-        self.cond_ind_test = cond_ind_test
-        if isinstance(self.cond_ind_test, type):
+        self.pc = pc
+        if isinstance(self.pc, type):
             raise ValueError(
-                "PCMCI requires that cond_ind_test "
-                "is instantiated, e.g. cond_ind_test =  "
-                "ParCorr()."
+                "PCMCI requires that pc "
+                "is instantiated, e.g. pc =  "
+                "PCStable(...)."
             )
-        self.cond_ind_test.set_dataframe(self.dataframe)
+        self.pc.set_pcmci(self)
         # Set the verbosity for debugging/logging messages
         self.verbosity = verbosity
         # Set the variable names
@@ -234,37 +234,6 @@ class PCMCIbase:
 
         # Return the _int_link_assumptions
         return _int_link_assumptions
-
-    def _dict_to_matrix(self, val_dict, tau_max, n_vars, default=1.0):
-        """Helper function to convert dictionary to matrix format.
-
-        Parameters
-        ---------
-        val_dict : dict
-            Dictionary of form {0:{(0, -1):float, ...}, 1:{...}, ...}.
-        tau_max : int
-            Maximum lag.
-        n_vars : int
-            Number of variables.
-        default : int
-            Default value for entries not part of val_dict.
-
-        Returns
-        -------
-        matrix : array of shape (N, N, tau_max+1)
-            Matrix format of p-values and test statistic values.
-        """
-        matrix = np.ones((n_vars, n_vars, tau_max + 1))
-        matrix *= default
-
-        for j in val_dict.keys():
-            for link in val_dict[j].keys():
-                k, tau = link
-                if tau == 0:
-                    matrix[k, j, 0] = matrix[j, k, 0] = val_dict[j][link]
-                else:
-                    matrix[k, j, abs(tau)] = val_dict[j][link]
-        return matrix
 
     def get_corrected_pvalues(
         self,
@@ -747,7 +716,7 @@ class PCMCIbase:
 
         T = self.dataframe.largest_time_step
 
-        if self.cond_ind_test.recycle_residuals:
+        if self.pc.cond_ind_test.recycle_residuals:
             # recycle_residuals clashes with sliding windows...
             raise ValueError("cond_ind_test.recycle_residuals must be False.")
 
@@ -885,7 +854,7 @@ class PCMCIbase:
             raise ValueError("tau_max must be explicitely set in method_args.")
         tau_max = method_args["tau_max"]
 
-        if self.cond_ind_test.recycle_residuals:
+        if self.pc.cond_ind_test.recycle_residuals:
             # recycle_residuals clashes with bootstrap draws...
             raise ValueError("cond_ind_test.recycle_residuals must be False.")
 

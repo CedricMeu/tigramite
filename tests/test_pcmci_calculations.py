@@ -9,6 +9,8 @@ from nose.tools import assert_equal
 import pytest
 
 from tigramite.pcmci import PCMCI
+from tigramite.pcstable import PCStable
+from tigramite.pcparallel import PCParallelInner
 from tigramite.independence_tests.parcorr import ParCorr
 from tigramite.independence_tests.oracle_conditional_independence import OracleCI
 import tigramite.data_processing as pp
@@ -148,10 +150,20 @@ def a_test(request):
     return ParCorr(verbosity=VERBOSITY)
 
 
+@pytest.fixture()
+def a_pc_stable(a_test):
+    return PCStable(a_test)
+
+
+@pytest.fixture()
+def a_pc_parallel_inner(a_test):
+    return PCStable(a_test)
+
+
 @pytest.fixture(params=[None])
 # Fixture to build and return a parameterized PCMCI.  Different selected
 # variables can be defined here.
-def a_pcmci(a_sample, a_test, a_common_params, request):
+def a_pcmci_stable(a_sample, a_pc_stable, a_common_params, request):
     # Unpack the test data and true parent graph
     dataframe, true_parents = a_sample
     # Unpack the common parameters
@@ -159,7 +171,7 @@ def a_pcmci(a_sample, a_test, a_common_params, request):
     # Get the parameters from this request
     select_vars = request.param
     # Build the PCMCI instance
-    pcmci = PCMCI(dataframe=dataframe, cond_ind_test=a_test, verbosity=VERBOSITY)
+    pcmci = PCMCI(dataframe=dataframe, pc=a_pc_stable, verbosity=VERBOSITY)
     # Select the correct links if they are given
     select_links = _select_links(sel_link, true_parents)
     # print(select_links)
@@ -170,7 +182,29 @@ def a_pcmci(a_sample, a_test, a_common_params, request):
     return pcmci, true_parents, tau_min, tau_max, select_links
 
 
-# PC_STABLE TESTING ############################################################
+@pytest.fixture(params=[None])
+# Fixture to build and return a parameterized PCMCI.  Different selected
+# variables can be defined here.
+def a_pcmci_parallel_inner(a_sample, a_pc_parallel_inner, a_common_params, request):
+    # Unpack the test data and true parent graph
+    dataframe, true_parents = a_sample
+    # Unpack the common parameters
+    tau_min, tau_max, sel_link = a_common_params
+    # Get the parameters from this request
+    select_vars = request.param
+    # Build the PCMCI instance
+    pcmci = PCMCI(dataframe=dataframe, pc=a_pc_parallel_inner, verbosity=VERBOSITY)
+    # Select the correct links if they are given
+    select_links = _select_links(sel_link, true_parents)
+    # print(select_links)
+    # Ensure we change the true parents to be the same as the selected links
+    if select_links is not None:
+        true_parents = select_links
+    # Return the constructed PCMCI, expected results, and common parameters
+    return pcmci, true_parents, tau_min, tau_max, select_links
+
+
+# PC-Stable TESTING ############################################################
 @pytest.fixture(
     params=[
         # Keep parameters for the pc_stable algorithm here
@@ -188,13 +222,13 @@ def a_pc_stable_params(request):
 
 
 @pytest.fixture()
-def a_run_pc_stable(a_pcmci, a_pc_stable_params):
+def a_run_pc_stable(a_pcmci_stable, a_pc_stable_params):
     # Unpack the pcmci, true parents, and common parameters
-    pcmci, true_parents, tau_min, tau_max, select_links = a_pcmci
+    pcmci, true_parents, tau_min, tau_max, select_links = a_pcmci_stable
     # Unpack the pc_stable parameters
     pc_alpha, max_conds_dim, max_combinations, save_iter = a_pc_stable_params
     # Run PC stable
-    pcmci.run_pc_stable(
+    pcmci.pc.run(
         link_assumptions=None,
         tau_min=tau_min,
         tau_max=tau_max,
@@ -204,7 +238,7 @@ def a_run_pc_stable(a_pcmci, a_pc_stable_params):
         max_combinations=max_combinations,
     )
     # Return the calculated and expected results
-    return pcmci.all_parents, true_parents
+    return pcmci.pc.all_parents, true_parents
 
 
 def test_pc_stable(a_run_pc_stable):
@@ -217,7 +251,7 @@ def test_pc_stable(a_run_pc_stable):
     assert_graphs_equal(parents, true_parents)
 
 
-# pc_parallel_inner TESTING ############################################################
+# PC-Parallel-Inner TESTING ############################################################
 @pytest.fixture(
     params=[
         # Keep parameters for the pc_parallel algorithm here
@@ -235,13 +269,13 @@ def a_pc_parallel_inner_params(request):
 
 
 @pytest.fixture()
-def a_run_pc_parallel_inner(a_pcmci, a_pc_parallel_inner_params):
+def a_run_pc_parallel_inner(a_pcmci_parallel_inner, a_pc_parallel_inner_params):
     # Unpack the pcmci, true parents, and common parameters
-    pcmci, true_parents, tau_min, tau_max, select_links = a_pcmci
+    pcmci, true_parents, tau_min, tau_max, select_links = a_pcmci_parallel_inner
     # Unpack the pc_parallel parameters
     pc_alpha, max_conds_dim, max_combinations, save_iter = a_pc_parallel_inner_params
     # Run PC stable
-    pcmci.run_pc_parallel_inner(
+    pcmci.pc.run(
         link_assumptions=None,
         tau_min=tau_min,
         tau_max=tau_max,
@@ -251,7 +285,7 @@ def a_run_pc_parallel_inner(a_pcmci, a_pc_parallel_inner_params):
         max_combinations=max_combinations,
     )
     # Return the calculated and expected results
-    return pcmci.all_parents, true_parents
+    return pcmci.pc.all_parents, true_parents
 
 
 def test_pc_parallel_inner(a_run_pc_parallel_inner):
@@ -278,9 +312,9 @@ def a_mci_params(request):
 
 
 @pytest.fixture()
-def a_run_mci(a_pcmci, a_mci_params):
+def a_run_mci(a_pcmci_stable, a_mci_params):
     # Unpack the pcmci and the true parents, and common parameters
-    pcmci, true_parents, tau_min, tau_max, select_links = a_pcmci
+    pcmci, true_parents, tau_min, tau_max, select_links = a_pcmci_stable
     # Unpack the MCI parameters
     alpha_level, max_conds_px, max_conds_py = a_mci_params
     # Run the MCI algorithm with the given parameters
@@ -309,9 +343,9 @@ def test_mci(a_run_mci):
 
 # PCMCI TESTING ################################################################
 @pytest.fixture()
-def a_run_pcmci(a_pcmci, a_pc_stable_params, a_mci_params):
+def a_run_pcmci(a_pcmci_stable, a_pc_stable_params, a_mci_params):
     # Unpack the pcmci and the true parents, and common parameters
-    pcmci, true_parents, tau_min, tau_max, select_links = a_pcmci
+    pcmci, true_parents, tau_min, tau_max, select_links = a_pcmci_stable
     # Unpack the pc_stable parameters
     pc_alpha, max_conds_dim, max_combinations, save_iter = a_pc_stable_params
     # Unpack the MCI parameters
@@ -345,9 +379,11 @@ def test_pcmci(a_run_pcmci):
 
 # PCMCI-Parallel-Inner TESTING ################################################################
 @pytest.fixture()
-def a_run_pcmci_parallel_inner(a_pcmci, a_pc_parallel_inner_params, a_mci_params):
+def a_run_pcmci_parallel_inner(
+    a_pcmci_stable, a_pc_parallel_inner_params, a_mci_params
+):
     # Unpack the pcmci and the true parents, and common parameters
-    pcmci, true_parents, tau_min, tau_max, select_links = a_pcmci
+    pcmci, true_parents, tau_min, tau_max, select_links = a_pcmci_stable
     # Unpack the pc_stable parameters
     (
         pc_alpha,
@@ -358,7 +394,7 @@ def a_run_pcmci_parallel_inner(a_pcmci, a_pc_parallel_inner_params, a_mci_params
     # Unpack the MCI parameters
     alpha_level, max_conds_px, max_conds_py = a_mci_params
     # Run the PCMCI algorithm with the given parameters
-    results = pcmci.run_pcmci_parallel_inner(
+    results = pcmci.run_pcmci(
         link_assumptions=None,
         tau_min=tau_min,
         tau_max=tau_max,
@@ -730,7 +766,7 @@ def a_run_pcmciplus(a_pcmciplus, a_pcmciplus_params):
         cond_ind_test = ParCorr()
 
     # Run the PCMCI algorithm with the given parameters
-    pcmci = PCMCI(dataframe=dataframe, cond_ind_test=cond_ind_test, verbosity=2)
+    pcmci = PCMCI(dataframe=dataframe, pc=PCStable(cond_ind_test), verbosity=2)
     results = pcmci.run_pcmciplus(
         link_assumptions=None,
         tau_min=tau_min,
@@ -878,7 +914,7 @@ def test_order_independence_pcmciplus(
         cond_ind_test = ParCorr()
 
     # Run the PCMCI algorithm with the given parameters
-    pcmci = PCMCI(dataframe=dataframe, cond_ind_test=cond_ind_test, verbosity=1)
+    pcmci = PCMCI(dataframe=dataframe, pc=PCStable(cond_ind_test), verbosity=1)
     print("************************")
     print("\nTrue Graph")
     for lag in range(tau_max):
@@ -911,7 +947,7 @@ def test_order_independence_pcmciplus(
         print(perm)
         data_new = np.copy(data[:, perm])
         dataframe = pp.DataFrame(data_new, var_names=list(perm))
-        pcmci = PCMCI(dataframe=dataframe, cond_ind_test=cond_ind_test, verbosity=1)
+        pcmci = PCMCI(dataframe=dataframe, pc=PCStable(cond_ind_test), verbosity=1)
         results = pcmci.run_pcmciplus(
             link_assumptions=None,
             tau_min=tau_min,
