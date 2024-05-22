@@ -11,9 +11,8 @@ import itertools
 from collections import defaultdict
 from copy import deepcopy
 import numpy as np
-import scipy.stats
 
-from multiprocessing import Lock, Pool, cpu_count
+from multiprocessing import Pool
 
 from .pcmci_base import PCMCIbase
 
