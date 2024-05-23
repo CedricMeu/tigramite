@@ -1,7 +1,11 @@
 [[tool.poetry.source]]
 name = "pypi-public"
 url = "https://pypi.org/simple/"
-priority = "default"
+priority = "primary"
+
+
+[tool.poetry.group.dev.dependencies]
+pylint = "^3.2.2"
 
 [tool.poetry]
 name = "tigramite"
@@ -18,6 +22,7 @@ numpy = "<1.24,>=1.18"
 scipy = ">=1.10.0"
 numba = "==0.56.4"
 six = "*"
+ortools = "^9.10.4067"
 
 [tool.poetry.extras]
 gpregression = ["scikit-learn"]

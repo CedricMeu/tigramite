@@ -5,16 +5,13 @@
 # License: GNU General Public License v3.0
 
 from __future__ import print_function
-import warnings
 import itertools
-from collections import defaultdict
 from copy import deepcopy
 import numpy as np
-import scipy.stats
-import math
 from joblib import Parallel, delayed
 
-class PCMCIbase():
+
+class _PCMCIbase:
     r"""PCMCI base class.
 
     Parameters
@@ -51,27 +48,26 @@ class PCMCIbase():
         Time series sample length of dataset(s).
     """
 
-    def __init__(self, dataframe,
-                 cond_ind_test,
-                 verbosity=0):
+    def __init__(self, dataframe, cond_ind_test, verbosity=0):
         # Set the data for this iteration of the algorithm
         self.dataframe = dataframe
         # Set the conditional independence test to be used
         self.cond_ind_test = cond_ind_test
         if isinstance(self.cond_ind_test, type):
-            raise ValueError("PCMCI requires that cond_ind_test "
-                             "is instantiated, e.g. cond_ind_test =  "
-                             "ParCorr().")
+            raise ValueError(
+                "PCMCI requires that cond_ind_test "
+                "is instantiated, e.g. cond_ind_test =  "
+                "ParCorr()."
+            )
         self.cond_ind_test.set_dataframe(self.dataframe)
         # Set the verbosity for debugging/logging messages
         self.verbosity = verbosity
-        # Set the variable names 
+        # Set the variable names
         self.var_names = self.dataframe.var_names
 
         # Store the shape of the data in the T and N variables
         self.T = self.dataframe.T
         self.N = self.dataframe.N
-
 
     def _reverse_link(self, link):
         """Reverse a given link, taking care to replace > with < and vice versa."""
@@ -92,9 +88,7 @@ class PCMCIbase():
         return left_mark + link[1] + right_mark
 
     def _check_cyclic(self, link_dict):
-        """Return True if the link_dict has a contemporaneous cycle.
-
-        """
+        """Return True if the link_dict has a contemporaneous cycle."""
 
         path = set()
         visited = set()
@@ -106,8 +100,8 @@ class PCMCIbase():
             path.add(vertex)
             for itaui in link_dict.get(vertex, ()):
                 i, taui = itaui
-                link_type = link_dict[vertex][itaui] 
-                if taui == 0 and link_type in ['-->', '-?>']:
+                link_type = link_dict[vertex][itaui]
+                if taui == 0 and link_type in ["-->", "-?>"]:
                     if i in path or visit(i):
                         return True
             path.remove(vertex)
@@ -115,8 +109,9 @@ class PCMCIbase():
 
         return any(visit(v) for v in link_dict)
 
-    def _set_link_assumptions(self, link_assumptions, tau_min, tau_max,
-                       remove_contemp=False):
+    def _set_link_assumptions(
+        self, link_assumptions, tau_min, tau_max, remove_contemp=False
+    ):
         """Helper function to set and check the link_assumptions argument
 
         Parameters
@@ -160,17 +155,19 @@ class PCMCIbase():
                     for lag in range(tau_min, tau_max + 1):
                         if not (i == j and lag == 0):
                             if lag == 0:
-                                _int_link_assumptions[j][(i, 0)] = 'o?o'
+                                _int_link_assumptions[j][(i, 0)] = "o?o"
                             else:
-                                _int_link_assumptions[j][(i, -lag)] = '-?>'
-  
+                                _int_link_assumptions[j][(i, -lag)] = "-?>"
+
         else:
 
             if remove_contemp:
                 for j in _int_link_assumptions.keys():
-                    _int_link_assumptions[j] = {link:_int_link_assumptions[j][link] 
-                                        for link in _int_link_assumptions[j]
-                                         if link[1] != 0}
+                    _int_link_assumptions[j] = {
+                        link: _int_link_assumptions[j][link]
+                        for link in _int_link_assumptions[j]
+                        if link[1] != 0
+                    }
 
         # Make contemporaneous assumptions consistent and orient lagged links
         for j in _vars:
@@ -179,13 +176,20 @@ class PCMCIbase():
                 link_type = _int_link_assumptions[j][link]
                 if tau == 0:
                     if (j, 0) in _int_link_assumptions[i]:
-                        if _int_link_assumptions[j][link] != self._reverse_link(_int_link_assumptions[i][(j, 0)]):
-                            raise ValueError("Inconsistent link assumptions for indices %d - %d " %(i, j))
+                        if _int_link_assumptions[j][link] != self._reverse_link(
+                            _int_link_assumptions[i][(j, 0)]
+                        ):
+                            raise ValueError(
+                                "Inconsistent link assumptions for indices %d - %d "
+                                % (i, j)
+                            )
                     else:
-                        _int_link_assumptions[i][(j, 0)] = self._reverse_link(_int_link_assumptions[j][link])
+                        _int_link_assumptions[i][(j, 0)] = self._reverse_link(
+                            _int_link_assumptions[j][link]
+                        )
                 else:
                     # Orient lagged links by time order while leaving the middle mark
-                    new_link_type = '-' + link_type[1] + '>'
+                    new_link_type = "-" + link_type[1] + ">"
                     _int_link_assumptions[j][link] = new_link_type
 
         # Otherwise, check that our assumpions are sane
@@ -195,13 +199,13 @@ class PCMCIbase():
         valid_entries = _key_set == set(range(self.N))
 
         valid_types = [
-                    'o-o',
-                    'o?o',
-                    '-->',
-                    '-?>',
-                    '<--',
-                    '<?-',
-                        ]
+            "o-o",
+            "o?o",
+            "-->",
+            "-?>",
+            "<--",
+            "<?-",
+        ]
 
         for links in _int_link_assumptions.values():
             if isinstance(links, dict) and len(links) == 0:
@@ -212,13 +216,14 @@ class PCMCIbase():
                 if links[(var, lag)] not in valid_types:
                     valid_entries = False
 
-
         if not valid_entries:
-            raise ValueError("link_assumptions"
-                             " must be dictionary with keys for all [0,...,N-1]"
-                             " variables and contain only links from "
-                             "these variables in range [tau_min, tau_max] "
-                             "and with link types in %s" %str(valid_types))
+            raise ValueError(
+                "link_assumptions"
+                " must be dictionary with keys for all [0,...,N-1]"
+                " variables and contain only links from "
+                "these variables in range [tau_min, tau_max] "
+                "and with link types in %s" % str(valid_types)
+            )
 
         # Check for contemporaneous cycles
         if self._check_cyclic(_int_link_assumptions):
@@ -258,14 +263,15 @@ class PCMCIbase():
                     matrix[k, j, abs(tau)] = val_dict[j][link]
         return matrix
 
-
-    def get_corrected_pvalues(self, p_matrix,
-                              fdr_method='fdr_bh',
-                              exclude_contemporaneous=True,
-                              tau_min=0,
-                              tau_max=1,
-                              link_assumptions=None,
-                              ):
+    def get_corrected_pvalues(
+        self,
+        p_matrix,
+        fdr_method="fdr_bh",
+        exclude_contemporaneous=True,
+        tau_min=0,
+        tau_max=1,
+        link_assumptions=None,
+    ):
         """Returns p-values corrected for multiple testing.
 
         Currently implemented is Benjamini-Hochberg False Discovery Rate
@@ -277,10 +283,10 @@ class PCMCIbase():
         p_matrix : array-like
             Matrix of p-values. Must be of shape (N, N, tau_max + 1).
         tau_min : int, default: 0
-            Minimum time lag. Only used as consistency check of link_assumptions. 
+            Minimum time lag. Only used as consistency check of link_assumptions.
         tau_max : int, default: 1
-            Maximum time lag. Must be larger or equal to tau_min. Only used as 
-            consistency check of link_assumptions. 
+            Maximum time lag. Must be larger or equal to tau_min. Only used as
+            consistency check of link_assumptions.
         link_assumptions : dict or None
             Dictionary of form {j:{(i, -tau): link_type, ...}, ...} specifying
             assumptions about links. This initializes the graph with entries
@@ -296,7 +302,7 @@ class PCMCIbase():
             or the links are assumed absent.
         fdr_method : str, optional (default: 'fdr_bh')
             Correction method, currently implemented is Benjamini-Hochberg
-            False Discovery Rate method.     
+            False Discovery Rate method.
         exclude_contemporaneous : bool, optional (default: True)
             Whether to include contemporaneous links in correction.
 
@@ -307,8 +313,7 @@ class PCMCIbase():
         """
 
         def _ecdf(x):
-            """No frills empirical cdf used in fdr correction.
-            """
+            """No frills empirical cdf used in fdr correction."""
             nobs = len(x)
             return np.arange(1, nobs + 1) / float(nobs)
 
@@ -319,16 +324,18 @@ class PCMCIbase():
         # Include only link_assumptions if given
         if link_assumptions != None:
             # Create a mask for these values
-            mask = np.zeros((N, N, tau_max_plusone), dtype='bool')
-            _int_link_assumptions = self._set_link_assumptions(link_assumptions, tau_min, tau_max)
+            mask = np.zeros((N, N, tau_max_plusone), dtype="bool")
+            _int_link_assumptions = self._set_link_assumptions(
+                link_assumptions, tau_min, tau_max
+            )
             for j, links_ in _int_link_assumptions.items():
                 for link in links_:
                     i, lag = link
-                    if _int_link_assumptions[j][link] not in ["<--", "<?-"]:    
+                    if _int_link_assumptions[j][link] not in ["<--", "<?-"]:
                         mask[i, j, abs(lag)] = True
         else:
             # Create a mask for these values
-            mask = np.ones((N, N, tau_max_plusone), dtype='bool')
+            mask = np.ones((N, N, tau_max_plusone), dtype="bool")
         # Ignore values from lag-zero 'autocorrelation' indices
         mask[range(N), range(N), 0] = False
         # Exclude all contemporaneous values if requested
@@ -337,9 +344,9 @@ class PCMCIbase():
         # Create the return value
         q_matrix = np.array(p_matrix)
         # Use the multiple tests function
-        if fdr_method is None or fdr_method == 'none':
+        if fdr_method is None or fdr_method == "none":
             pass
-        elif fdr_method == 'fdr_bh':
+        elif fdr_method == "fdr_bh":
             pvs = p_matrix[mask]
             pvals_sortind = np.argsort(pvs)
             pvals_sorted = np.take(pvs, pvals_sortind)
@@ -347,8 +354,7 @@ class PCMCIbase():
             ecdffactor = _ecdf(pvals_sorted)
 
             pvals_corrected_raw = pvals_sorted / ecdffactor
-            pvals_corrected = np.minimum.accumulate(
-                pvals_corrected_raw[::-1])[::-1]
+            pvals_corrected = np.minimum.accumulate(pvals_corrected_raw[::-1])[::-1]
             del pvals_corrected_raw
 
             pvals_corrected[pvals_corrected > 1] = 1
@@ -359,11 +365,10 @@ class PCMCIbase():
             q_matrix[mask] = pvals_corrected_
 
         else:
-            raise ValueError('Only FDR method fdr_bh implemented')
+            raise ValueError("Only FDR method fdr_bh implemented")
 
         # Return the new matrix
         return q_matrix
-
 
     def _get_adj_time_series(self, graph, include_conflicts=True, sort_by=None):
         """Helper function that returns dictionary of adjacencies from graph.
@@ -391,23 +396,29 @@ class PCMCIbase():
                 adjt[j] = list(zip(*(where[0], -where[1])))
         else:
             for j in range(N):
-                where = np.where(np.logical_and.reduce((graph[:,j,:] != "", 
-                                                        graph[:,j,:] != "x-x",
-                                                        graph[:,j,:] != "x?x")))
+                where = np.where(
+                    np.logical_and.reduce(
+                        (
+                            graph[:, j, :] != "",
+                            graph[:, j, :] != "x-x",
+                            graph[:, j, :] != "x?x",
+                        )
+                    )
+                )
                 # where = np.where(graph[:, j, :] == 1)
                 adjt[j] = list(zip(*(where[0], -where[1])))
 
         if sort_by is not None:
             for j in range(N):
                 # Get the absolute value for all the test statistics
-                abs_values = {k: np.abs(sort_by[j][k]) for k in list(sort_by[j])
-                              if k in adjt[j]}
+                abs_values = {
+                    k: np.abs(sort_by[j][k]) for k in list(sort_by[j]) if k in adjt[j]
+                }
                 adjt[j] = sorted(abs_values, key=abs_values.get, reverse=True)
 
         return adjt
 
-    def _get_adj_time_series_contemp(self, graph, include_conflicts=True,
-                                     sort_by=None):
+    def _get_adj_time_series_contemp(self, graph, include_conflicts=True, sort_by=None):
         """Helper function that returns dictionary of contemporaneous
         adjacencies from graph.
 
@@ -427,15 +438,14 @@ class PCMCIbase():
             Contemporaneous adjacency dictionary.
         """
         N, N, tau_max_plusone = graph.shape
-        adjt = self._get_adj_time_series(graph,
-                                         include_conflicts=include_conflicts,
-                                         sort_by=sort_by)
+        adjt = self._get_adj_time_series(
+            graph, include_conflicts=include_conflicts, sort_by=sort_by
+        )
         for j in range(N):
             adjt[j] = [a for a in adjt[j] if a[1] == 0]
             # adjt[j] = list(np.where(graph[:,j,0] != 0)[0])
 
         return adjt
-
 
     def _get_simplicial_node(self, circle_cpdag, variable_order):
         """Find simplicial nodes in circle component CPDAG.
@@ -457,18 +467,21 @@ class PCMCIbase():
         """
 
         for j in variable_order:
-            adj_j = np.where(np.logical_or(circle_cpdag[:,j,0] == "o-o",
-                                           circle_cpdag[:,j,0] == "o?o"))[0].tolist()
+            adj_j = np.where(
+                np.logical_or(
+                    circle_cpdag[:, j, 0] == "o-o", circle_cpdag[:, j, 0] == "o?o"
+                )
+            )[0].tolist()
 
             # Make sure the node has any adjacencies
             all_adjacent = len(adj_j) > 0
 
             # If it has just one adjacency, it's also simplicial
             if len(adj_j) == 1:
-                return (j, adj_j)  
+                return (j, adj_j)
             else:
-                for (var1, var2) in itertools.combinations(adj_j, 2):
-                    if circle_cpdag[var1, var2, 0] == "": 
+                for var1, var2 in itertools.combinations(adj_j, 2):
+                    if circle_cpdag[var1, var2, 0] == "":
                         all_adjacent = False
                         break
 
@@ -487,7 +500,7 @@ class PCMCIbase():
 
         Based on Zhang 2008, Theorem 2 (simplified for CPDAGs): Let H be the
         graph resulting from the following procedure applied to a CPDAG:
- 
+
         Consider the circle component of the CPDAG (sub graph consisting of all
         (o-o edges, i.e., only for contemporaneous links), CPDAG^C and turn into
         a DAG with no unshielded colliders. Then (H is a member of the Markov
@@ -530,19 +543,18 @@ class PCMCIbase():
         # Turn circle component CPDAG^C into a DAG with no unshielded colliders.
         circle_cpdag = np.copy(cpdag_graph)
         # All lagged links are directed by time, remove them here
-        circle_cpdag[:,:,1:] = ""
+        circle_cpdag[:, :, 1:] = ""
         # Also remove conflicting links
-        circle_cpdag[circle_cpdag=="x-x"] = ""
+        circle_cpdag[circle_cpdag == "x-x"] = ""
         # Find undirected links, remove directed links
         for i, j, tau in zip(*np.where(circle_cpdag != "")):
-            if circle_cpdag[i,j,0][1] == '?':
+            if circle_cpdag[i, j, 0][1] == "?":
                 raise ValueError("Invalid middle mark.")
-            if circle_cpdag[i,j,0] == "-->":
-                circle_cpdag[i,j,0] = ""
+            if circle_cpdag[i, j, 0] == "-->":
+                circle_cpdag[i, j, 0] = ""
 
         # Iterate through simplicial nodes
-        simplicial_node = self._get_simplicial_node(circle_cpdag,
-                                                    variable_order)
+        simplicial_node = self._get_simplicial_node(circle_cpdag, variable_order)
         while simplicial_node is not None:
 
             # Choose such a vertex V1 and orient any edges incident to V1 into
@@ -552,11 +564,10 @@ class PCMCIbase():
             for var in adj_j:
                 dag[var, j, 0] = "-->"
                 dag[j, var, 0] = "<--"
-                circle_cpdag[var, j, 0] = circle_cpdag[j, var, 0] = "" 
+                circle_cpdag[var, j, 0] = circle_cpdag[j, var, 0] = ""
 
             # Iterate
-            simplicial_node = self._get_simplicial_node(circle_cpdag,
-                                                    variable_order)
+            simplicial_node = self._get_simplicial_node(circle_cpdag, variable_order)
 
         return dag
 
@@ -575,25 +586,32 @@ class PCMCIbase():
             graph as string array with links '-->'.
         """
 
-        graph = np.zeros(graph_bool.shape, dtype='<U3')
+        graph = np.zeros(graph_bool.shape, dtype="<U3")
         graph[:] = ""
         # Lagged links
-        graph[:,:,1:][graph_bool[:,:,1:]==1] = "-->"
+        graph[:, :, 1:][graph_bool[:, :, 1:] == 1] = "-->"
         # Unoriented contemporaneous links
-        graph[:,:,0][np.logical_and(graph_bool[:,:,0]==1, 
-                                    graph_bool[:,:,0].T==1)] = "o-o"
+        graph[:, :, 0][
+            np.logical_and(graph_bool[:, :, 0] == 1, graph_bool[:, :, 0].T == 1)
+        ] = "o-o"
         # Conflicting contemporaneous links
-        graph[:,:,0][np.logical_and(graph_bool[:,:,0]==2, 
-                                    graph_bool[:,:,0].T==2)] = "x-x"
+        graph[:, :, 0][
+            np.logical_and(graph_bool[:, :, 0] == 2, graph_bool[:, :, 0].T == 2)
+        ] = "x-x"
         # Directed contemporaneous links
-        for (i,j) in zip(*np.where(
-            np.logical_and(graph_bool[:,:,0]==1, graph_bool[:,:,0].T==0))):
-            graph[i,j,0] = "-->"
-            graph[j,i,0] = "<--"
+        for i, j in zip(
+            *np.where(
+                np.logical_and(graph_bool[:, :, 0] == 1, graph_bool[:, :, 0].T == 0)
+            )
+        ):
+            graph[i, j, 0] = "-->"
+            graph[j, i, 0] = "<--"
 
         return graph
 
-    def symmetrize_p_and_val_matrix(self, p_matrix, val_matrix, link_assumptions, conf_matrix=None):
+    def symmetrize_p_and_val_matrix(
+        self, p_matrix, val_matrix, link_assumptions, conf_matrix=None
+    ):
         """Symmetrizes the p_matrix, val_matrix, and conf_matrix based on link_assumptions
            and the larger p-value.
 
@@ -638,9 +656,8 @@ class PCMCIbase():
                 # If both the links are present in link_assumptions, symmetrize using maximum p-value
                 # if ((i, 0) in link_assumptions[j] and (j, 0) in link_assumptions[i]):
                 if (i, 0) in link_assumptions[j]:
-                    if link_assumptions[j][(i, 0)] in ["o-o", 'o?o']:
-                        if (p_matrix[i, j, 0]
-                                >= p_matrix[j, i, 0]):
+                    if link_assumptions[j][(i, 0)] in ["o-o", "o?o"]:
+                        if p_matrix[i, j, 0] >= p_matrix[j, i, 0]:
                             p_matrix[j, i, 0] = p_matrix[i, j, 0]
                             val_matrix[j, i, 0] = val_matrix[i, j, 0]
                             if conf_matrix is not None:
@@ -648,7 +665,7 @@ class PCMCIbase():
 
                     # If only one of the links is present in link_assumptions, symmetrize using the p-value of the link present
                     # elif ((i, 0) in link_assumptions[j] and (j, 0) not in link_assumptions[i]):
-                    elif link_assumptions[j][(i, 0)] in ["-->", '-?>']:
+                    elif link_assumptions[j][(i, 0)] in ["-->", "-?>"]:
                         p_matrix[j, i, 0] = p_matrix[i, j, 0]
                         val_matrix[j, i, 0] = val_matrix[i, j, 0]
                         if conf_matrix is not None:
@@ -658,16 +675,21 @@ class PCMCIbase():
                         pass
 
         # Return the values as a dictionary and store in class
-        results = {'val_matrix': val_matrix,
-                   'p_matrix': p_matrix,
-                   'conf_matrix': conf_matrix}
+        results = {
+            "val_matrix": val_matrix,
+            "p_matrix": p_matrix,
+            "conf_matrix": conf_matrix,
+        }
         return results
 
-    def run_sliding_window_of(self, method, method_args, 
-                        window_step,
-                        window_length,
-                        conf_lev = 0.9,
-                        ):
+    def run_sliding_window_of(
+        self,
+        method,
+        method_args,
+        window_step,
+        window_length,
+        conf_lev=0.9,
+    ):
         """Runs chosen method on sliding windows taken from DataFrame.
 
         The function returns summary_results and all_results (containing the
@@ -697,25 +719,29 @@ class PCMCIbase():
         Dictionary of results for every sliding window.
         """
 
-        valid_methods = ['run_pc_stable',
-                          'run_mci',
-                          'get_lagged_dependencies',
-                          'run_fullci',
-                          'run_bivci',
-                          'run_pcmci',
-                          'run_pcalg',
-                          'run_lpcmci',
-                          'run_jpcmciplus',
-                          # 'run_pcalg_non_timeseries_data',
-                          'run_pcmciplus',]
+        valid_methods = [
+            "run_pc_stable",
+            "run_mci",
+            "get_lagged_dependencies",
+            "run_fullci",
+            "run_bivci",
+            "run_pcmci",
+            "run_pcalg",
+            "run_lpcmci",
+            "run_jpcmciplus",
+            # 'run_pcalg_non_timeseries_data',
+            "run_pcmciplus",
+        ]
 
         if method not in valid_methods:
             raise ValueError("method must be one of %s" % str(valid_methods))
 
         if self.dataframe.reference_points_is_none is False:
-            raise ValueError("Reference points are not accepted in "
-                             "sliding windows analysis, align data before and use masking"
-                             " and/or missing values.")
+            raise ValueError(
+                "Reference points are not accepted in "
+                "sliding windows analysis, align data before and use masking"
+                " and/or missing values."
+            )
 
         T = self.dataframe.largest_time_step
 
@@ -724,11 +750,12 @@ class PCMCIbase():
             raise ValueError("cond_ind_test.recycle_residuals must be False.")
 
         if self.verbosity > 0:
-            print("\n##\n## Running sliding window analysis of %s " % method +
-                  "\n##\n" +
-                  "\nwindow_step = %s \n" % window_step +
-                  "\nwindow_length = %s \n" % window_length
-                  )
+            print(
+                "\n##\n## Running sliding window analysis of %s " % method
+                + "\n##\n"
+                + "\nwindow_step = %s \n" % window_step
+                + "\nwindow_length = %s \n" % window_length
+            )
 
         original_reference_points = deepcopy(self.dataframe.reference_points)
 
@@ -736,12 +763,17 @@ class PCMCIbase():
         n_windows = len(window_start_points)
 
         if len(window_start_points) == 0:
-            raise ValueError("Empty list of windows, check window_length and window_step!")
+            raise ValueError(
+                "Empty list of windows, check window_length and window_step!"
+            )
 
         window_results = {}
         for iw, w in enumerate(window_start_points):
             if self.verbosity > 0:
-                print("\n# Window start %s (%d/%d) \n" %(w, iw+1, len(window_start_points)))                
+                print(
+                    "\n# Window start %s (%d/%d) \n"
+                    % (w, iw + 1, len(window_start_points))
+                )
             # Construct reference_points from window
             time_window = np.arange(w, w + window_length, 1)
             # Remove points beyond T
@@ -757,12 +789,12 @@ class PCMCIbase():
                 res_item = window_res[key]
                 if iw == 0:
                     if type(res_item) is np.ndarray:
-                        window_results[key] = np.empty((n_windows,) 
-                                                     + res_item.shape,
-                                                     dtype=res_item.dtype) 
+                        window_results[key] = np.empty(
+                            (n_windows,) + res_item.shape, dtype=res_item.dtype
+                        )
                     else:
                         window_results[key] = {}
-                
+
                 window_results[key][iw] = res_item
 
         # Reset to original_reference_points data for further analyses
@@ -770,16 +802,21 @@ class PCMCIbase():
         self.dataframe.reference_points = original_reference_points
 
         # Generate summary results
-        summary_results = self.return_summary_results(results=window_results, 
-                                                      conf_lev=conf_lev)
+        summary_results = self.return_summary_results(
+            results=window_results, conf_lev=conf_lev
+        )
 
-        return {'summary_results': summary_results, 
-                'window_results': window_results}
+        return {"summary_results": summary_results, "window_results": window_results}
 
-    def run_bootstrap_of(self, method, method_args,
-                        boot_samples=100,
-                        boot_blocklength=1,
-                        conf_lev=0.9, seed=None):
+    def run_bootstrap_of(
+        self,
+        method,
+        method_args,
+        boot_samples=100,
+        boot_blocklength=1,
+        conf_lev=0.9,
+        seed=None,
+    ):
         """Runs chosen method on bootstrap samples drawn from DataFrame.
 
         Bootstraps for tau=0 are drawn from [2xtau_max, ..., T] and all lagged
@@ -821,58 +858,63 @@ class PCMCIbase():
         Dictionary of summary results and results for every bootstrap sample.
         """
 
-        valid_methods = ['run_pc_stable',
-                          'run_mci',
-                          'get_lagged_dependencies',
-                          'run_fullci',
-                          'run_bivci',
-                          'run_pcmci',
-                          'run_pcalg',
-                          'run_pcalg_non_timeseries_data',
-                          'run_pcmciplus',
-                          'run_lpcmci',
-                          'run_jpcmciplus',
-                          ]
+        valid_methods = [
+            "run_pc_stable",
+            "run_mci",
+            "get_lagged_dependencies",
+            "run_fullci",
+            "run_bivci",
+            "run_pcmci",
+            "run_pcalg",
+            "run_pcalg_non_timeseries_data",
+            "run_pcmciplus",
+            "run_lpcmci",
+            "run_jpcmciplus",
+        ]
         if method not in valid_methods:
             raise ValueError("method must be one of %s" % str(valid_methods))
 
         T = self.dataframe.largest_time_step
         seed_sequence = np.random.SeedSequence(seed)
-        #global_random_state = np.random.default_rng(seed)
+        # global_random_state = np.random.default_rng(seed)
 
         # Extract tau_max to construct bootstrap draws
-        if 'tau_max' not in method_args:
+        if "tau_max" not in method_args:
             raise ValueError("tau_max must be explicitely set in method_args.")
-        tau_max = method_args['tau_max']
+        tau_max = method_args["tau_max"]
 
         if self.cond_ind_test.recycle_residuals:
             # recycle_residuals clashes with bootstrap draws...
             raise ValueError("cond_ind_test.recycle_residuals must be False.")
 
         if self.verbosity > 0:
-            print("\n##\n## Running Bootstrap of %s " % method +
-                  "\n##\n" +
-                  "\nboot_samples = %s \n" % boot_samples +
-                  "\nboot_blocklength = %s \n" % boot_blocklength
-                  )
+            print(
+                "\n##\n## Running Bootstrap of %s " % method
+                + "\n##\n"
+                + "\nboot_samples = %s \n" % boot_samples
+                + "\nboot_blocklength = %s \n" % boot_blocklength
+            )
 
         # Set bootstrap attribute to be passed to dataframe
         self.dataframe.bootstrap = {}
-        self.dataframe.bootstrap['boot_blocklength'] = boot_blocklength
+        self.dataframe.bootstrap["boot_blocklength"] = boot_blocklength
 
         boot_results = {}
-        #for b in range(boot_samples):
-            # Generate random state for this boot and set it in dataframe
-            # which will generate a draw with replacement
-            #boot_seed = global_random_state.integers(0, boot_samples, 1)
-            #boot_random_state = np.random.default_rng(boot_seed)
-            #self.dataframe.bootstrap['random_state'] = boot_random_state
+        # for b in range(boot_samples):
+        # Generate random state for this boot and set it in dataframe
+        # which will generate a draw with replacement
+        # boot_seed = global_random_state.integers(0, boot_samples, 1)
+        # boot_random_state = np.random.default_rng(boot_seed)
+        # self.dataframe.bootstrap['random_state'] = boot_random_state
 
         child_seeds = seed_sequence.spawn(boot_samples)
 
         aggregated_results = Parallel(n_jobs=-1)(
-            delayed(self.parallelized_bootstraps)(method, method_args, boot_seed=child_seeds[b]) for
-            b in range(boot_samples))
+            delayed(self.parallelized_bootstraps)(
+                method, method_args, boot_seed=child_seeds[b]
+            )
+            for b in range(boot_samples)
+        )
 
         for b in range(boot_samples):
             # Aggregate val_matrix and other arrays to new arrays with
@@ -883,9 +925,9 @@ class PCMCIbase():
                 res_item = boot_res[key]
                 if type(res_item) is np.ndarray:
                     if b == 0:
-                        boot_results[key] = np.empty((boot_samples,) 
-                                                     + res_item.shape,
-                                                     dtype=res_item.dtype) 
+                        boot_results[key] = np.empty(
+                            (boot_samples,) + res_item.shape, dtype=res_item.dtype
+                        )
                     boot_results[key][b] = res_item
                 else:
                     if b == 0:
@@ -893,20 +935,20 @@ class PCMCIbase():
                     boot_results[key][b] = res_item
 
         # Generate summary results
-        summary_results = self.return_summary_results(results=boot_results, 
-                                                      conf_lev=conf_lev)
+        summary_results = self.return_summary_results(
+            results=boot_results, conf_lev=conf_lev
+        )
 
         # Reset bootstrap to None
         self.dataframe.bootstrap = None
 
-        return {'summary_results': summary_results, 
-                'boot_results': boot_results}
+        return {"summary_results": summary_results, "boot_results": boot_results}
 
     def parallelized_bootstraps(self, method, method_args, boot_seed):
         # Pass seed sequence for this boot and set it in dataframe
         # which will generate a draw with replacement
         boot_random_state = np.random.default_rng(boot_seed)
-        self.dataframe.bootstrap['random_state'] = boot_random_state
+        self.dataframe.bootstrap["random_state"] = boot_random_state
         boot_res = getattr(self, method)(**method_args)
         return boot_res
 
@@ -915,12 +957,12 @@ class PCMCIbase():
         """Return summary results for causal graphs.
 
         The function returns summary_results of an array of PCMCI(+) results.
-        Summary_results contains val_matrix_mean and val_matrix_interval, the latter 
+        Summary_results contains val_matrix_mean and val_matrix_interval, the latter
         containing the confidence bounds for conf_lev. If the method also returns a graph,
-        then 'most_frequent_links' containing the most frequent link outcome 
-        (either 0 or 1 or a specific link type) in each entry of graph, as well 
-        as 'link_frequency', containing the occurence frequency of the most 
-        frequent link outcome, are returned. 
+        then 'most_frequent_links' containing the most frequent link outcome
+        (either 0 or 1 or a specific link type) in each entry of graph, as well
+        as 'link_frequency', containing the occurence frequency of the most
+        frequent link outcome, are returned.
 
         Parameters
         ----------
@@ -938,24 +980,26 @@ class PCMCIbase():
         # Generate summary results
         summary_results = {}
 
-        if 'graph' in results:
-            n_results, N, N, tau_max_plusone = results['graph'].shape
+        if "graph" in results:
+            n_results, N, N, tau_max_plusone = results["graph"].shape
             tau_max = tau_max_plusone - 1
             # print(repr(results['graph']))
-            summary_results['most_frequent_links'] = np.zeros((N, N, tau_max_plusone),
-                                dtype=results['graph'][0].dtype)
-            summary_results['link_frequency'] = np.zeros((N, N, tau_max_plusone),
-                                dtype='float')
-            preferred_order = [ 
-                "", 
-                "x-x", 
+            summary_results["most_frequent_links"] = np.zeros(
+                (N, N, tau_max_plusone), dtype=results["graph"][0].dtype
+            )
+            summary_results["link_frequency"] = np.zeros(
+                (N, N, tau_max_plusone), dtype="float"
+            )
+            preferred_order = [
+                "",
+                "x-x",
                 # "x--",
                 # "--x",
                 # "x->",
-                # "<-x", 
+                # "<-x",
                 # "x-o",
                 # "o-x",
-                "o-o",            
+                "o-o",
                 # "o--",
                 # "--o",
                 # "o->",
@@ -966,34 +1010,41 @@ class PCMCIbase():
                 # "<--",
                 # "<-+",
                 # "+->",
-                ]
+            ]
 
-            for (i, j) in itertools.product(range(N), range(N)):
+            for i, j in itertools.product(range(N), range(N)):
                 for abstau in range(0, tau_max + 1):
-                    links, counts = np.unique(results['graph'][:,i,j,abstau], 
-                                        return_counts=True)
+                    links, counts = np.unique(
+                        results["graph"][:, i, j, abstau], return_counts=True
+                    )
                     list_of_most_freq = links[counts == counts.max()]
                     if len(list_of_most_freq) == 1:
                         choice = list_of_most_freq[0]
                     else:
-                        ordered_list = [link for link in preferred_order
-                                         if link in list_of_most_freq]
+                        ordered_list = [
+                            link
+                            for link in preferred_order
+                            if link in list_of_most_freq
+                        ]
                         if len(ordered_list) == 0:
                             choice = "x-x"
                         else:
                             choice = ordered_list[0]
-                    summary_results['most_frequent_links'][i,j, abstau] = choice
-                    summary_results['link_frequency'][i,j, abstau] = \
-                                counts[counts == counts.max()].sum()/float(n_results)
+                    summary_results["most_frequent_links"][i, j, abstau] = choice
+                    summary_results["link_frequency"][i, j, abstau] = counts[
+                        counts == counts.max()
+                    ].sum() / float(n_results)
 
         # Confidence intervals for val_matrix; interval is two-sided
-        c_int = (1. - (1. - conf_lev)/2.)
-        summary_results['val_matrix_mean'] = np.mean(
-                                    results['val_matrix'], axis=0)
+        c_int = 1.0 - (1.0 - conf_lev) / 2.0
+        summary_results["val_matrix_mean"] = np.mean(results["val_matrix"], axis=0)
 
-        summary_results['val_matrix_interval'] = np.stack(np.percentile(
-                                    results['val_matrix'], axis=0,
-                                    q = [100*(1. - c_int), 100*c_int]), axis=3)
+        summary_results["val_matrix_interval"] = np.stack(
+            np.percentile(
+                results["val_matrix"], axis=0, q=[100 * (1.0 - c_int), 100 * c_int]
+            ),
+            axis=3,
+        )
         return summary_results
 
     @staticmethod
@@ -1014,8 +1065,8 @@ class PCMCIbase():
 
         links = dict([(j, {}) for j in range(N)])
 
-        for (i, j, tau) in zip(*np.where(graph!='')):
-            links[j][(i, -tau)] = graph[i,j,tau]
+        for i, j, tau in zip(*np.where(graph != "")):
+            links[j][(i, -tau)] = graph[i, j, tau]
 
         return links
 
@@ -1051,7 +1102,7 @@ class PCMCIbase():
             if tau_max < max_lag:
                 raise ValueError("maxlag(links) > tau_max")
 
-        graph = np.zeros((N, N, tau_max + 1), dtype='<U3')
+        graph = np.zeros((N, N, tau_max + 1), dtype="<U3")
         graph[:] = ""
         for j in range(N):
             for link in links[j]:
@@ -1080,8 +1131,7 @@ class PCMCIbase():
         """
 
         def _get_minmax_lag(links):
-            """Helper function to retrieve tau_min and tau_max from links.
-            """
+            """Helper function to retrieve tau_min and tau_max from links."""
 
             N = len(links)
 
@@ -1094,13 +1144,13 @@ class PCMCIbase():
                         var, lag = link_props[0]
                         coeff = link_props[1]
                         # func = link_props[2]
-                        if coeff != 0.:
+                        if coeff != 0.0:
                             min_lag = min(min_lag, abs(lag))
                             max_lag = max(max_lag, abs(lag))
                     else:
                         var, lag = link_props
                         min_lag = min(min_lag, abs(lag))
-                        max_lag = max(max_lag, abs(lag))   
+                        max_lag = max(max_lag, abs(lag))
 
             return min_lag, max_lag
 
@@ -1114,17 +1164,19 @@ class PCMCIbase():
             tau_max = max_lag
         else:
             if max_lag > tau_max:
-                raise ValueError("tau_max is smaller than maximum lag = %d "
-                                 "found in links, use tau_max=None or larger "
-                                 "value" % max_lag)
+                raise ValueError(
+                    "tau_max is smaller than maximum lag = %d "
+                    "found in links, use tau_max=None or larger "
+                    "value" % max_lag
+                )
 
-        graph = np.zeros((N, N, tau_max + 1), dtype='<U3')
+        graph = np.zeros((N, N, tau_max + 1), dtype="<U3")
         for j in links.keys():
             for link_props in links[j]:
                 if len(link_props) > 2:
                     var, lag = link_props[0]
                     coeff = link_props[1]
-                    if coeff != 0.:
+                    if coeff != 0.0:
                         graph[var, j, abs(lag)] = "-->"
                         if lag == 0:
                             graph[j, var, 0] = "<--"
@@ -1137,18 +1189,26 @@ class PCMCIbase():
         return graph
 
     @staticmethod
-    def build_link_assumptions(link_assumptions_absent_link_means_no_knowledge,
-                               n_component_time_series,
-                               tau_max,
-                               tau_min=0):
-        
-        out = {j: {(i, -tau_i): ("o?>" if tau_i > 0 else "o?o")
-             for i in range(n_component_time_series) for tau_i in range(tau_min, tau_max+1)
-             if (tau_i > 0 or i != j)} for j in range(n_component_time_series)}
-        
+    def build_link_assumptions(
+        link_assumptions_absent_link_means_no_knowledge,
+        n_component_time_series,
+        tau_max,
+        tau_min=0,
+    ):
+
+        out = {
+            j: {
+                (i, -tau_i): ("o?>" if tau_i > 0 else "o?o")
+                for i in range(n_component_time_series)
+                for tau_i in range(tau_min, tau_max + 1)
+                if (tau_i > 0 or i != j)
+            }
+            for j in range(n_component_time_series)
+        }
+
         for j, links_j in link_assumptions_absent_link_means_no_knowledge.items():
             for (i, lag_i), link_ij in links_j.items():
-                if link_ij == "": 
+                if link_ij == "":
                     del out[j][(i, lag_i)]
                 else:
                     out[j][(i, lag_i)] = link_ij
