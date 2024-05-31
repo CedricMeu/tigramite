@@ -48,9 +48,13 @@ class _PCMCIbase:
         Time series sample length of dataset(s).
     """
 
-    def __init__(self, dataframe, cond_ind_test, verbosity=0):
+    def __init__(self, dataframe, pc, cond_ind_test, verbosity=0):
         # Set the data for this iteration of the algorithm
         self.dataframe = dataframe
+
+        # Set pc implementation
+        self.pc = pc
+
         # Set the conditional independence test to be used
         self.cond_ind_test = cond_ind_test
         if isinstance(self.cond_ind_test, type):
@@ -60,8 +64,10 @@ class _PCMCIbase:
                 "ParCorr()."
             )
         self.cond_ind_test.set_dataframe(self.dataframe)
+
         # Set the verbosity for debugging/logging messages
         self.verbosity = verbosity
+
         # Set the variable names
         self.var_names = self.dataframe.var_names
 

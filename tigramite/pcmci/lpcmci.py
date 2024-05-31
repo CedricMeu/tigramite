@@ -170,7 +170,7 @@ class LPCMCI(_PCMCIbase):
     as '+'.
     """
 
-    def __init__(self, dataframe, cond_ind_test, verbosity=0):
+    def __init__(self, dataframe, pc, cond_ind_test, verbosity=0):
         """Class constructor. Store:
         i)      data
         ii)     conditional independence test object
@@ -178,7 +178,11 @@ class LPCMCI(_PCMCIbase):
 
         # Init base class
         _PCMCIbase.__init__(
-            self, dataframe=dataframe, cond_ind_test=cond_ind_test, verbosity=verbosity
+            self,
+            dataframe=dataframe,
+            pc=pc,
+            cond_ind_test=cond_ind_test,
+            verbosity=verbosity,
         )
 
     def run_lpcmci(

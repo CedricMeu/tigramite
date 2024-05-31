@@ -14,7 +14,7 @@ import traceback
 from tigramite.independence_tests.parcorr import ParCorr
 from tigramite.data_processing import DataFrame
 from tigramite.models import Prediction
-from tigramite.pcmci import PCMCI
+from tigramite.pcmci.pcmci import PCMCI
 
 
 class RPCMCI(PCMCI):
