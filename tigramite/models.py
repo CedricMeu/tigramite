@@ -13,7 +13,7 @@ import sklearn.linear_model
 import networkx
 from tigramite.data_processing import DataFrame
 from tigramite.pcmci.pcmci import PCMCI
-from tigramite.pc.pcstable import pcstable
+from tigramite.pc.pcstable import PCStable
 
 
 class Models:
@@ -1838,7 +1838,7 @@ class Prediction(Models, PCMCI):
             PCMCI.__init__(
                 self,
                 dataframe=self.dataframe,
-                pc=pcstable,
+                pc=PCStable(),
                 cond_ind_test=cond_ind_test,
                 verbosity=verbosity,
             )
@@ -2146,7 +2146,7 @@ if __name__ == "__main__":
     import tigramite
     import tigramite.data_processing as pp
     from tigramite.toymodels import structural_causal_processes as toys
-    from tigramite.pc.pcstable import pcstable
+    from tigramite.pc.pcstable import PCStable
     from tigramite.independence_tests.parcorr import ParCorr
     import tigramite.plotting as tp
 

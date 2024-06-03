@@ -3839,7 +3839,7 @@ class PCMCI(_PCMCIbase):
 
 
 if __name__ == "__main__":
-    from tigramite.pc.pcstable import pcstable
+    from tigramite.pc.pcstable import PCStable
     from tigramite.independence_tests.parcorr import ParCorr
     from tigramite.independence_tests.cmiknn import CMIknn
 
@@ -3901,7 +3901,7 @@ if __name__ == "__main__":
     # for j in link_assumptions:
     #     print(link_assumptions[j])
     pcmci_parcorr = PCMCI(
-        dataframe=dataframe, pc=pcstable, cond_ind_test=ci_test, verbosity=1
+        dataframe=dataframe, pc=PCStable(), cond_ind_test=ci_test, verbosity=1
     )
     results = pcmci_parcorr.run_pcmciplus(
         tau_max=tau_max,

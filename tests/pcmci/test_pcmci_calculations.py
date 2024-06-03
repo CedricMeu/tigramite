@@ -9,7 +9,7 @@ import numpy as np
 from nose.tools import assert_equal
 import pytest
 
-from tigramite.pc.pcstable import pcstable
+from tigramite.pc.pcstable import PCStable
 from tigramite.pcmci.pcmci import PCMCI
 from tigramite.independence_tests.parcorr import ParCorr
 from tigramite.independence_tests.oracle_conditional_independence import OracleCI
@@ -154,7 +154,7 @@ def a_test(request):
 # Parameterize and return the independence test.
 # Currently just a wrapper for ParCorr, but is extendable
 def a_pc_impl(request):
-    return pcstable
+    return PCStable()
 
 
 @pytest.fixture(params=[None])

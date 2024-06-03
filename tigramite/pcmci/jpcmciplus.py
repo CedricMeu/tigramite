@@ -1017,7 +1017,7 @@ if __name__ == "__main__":
     from tigramite.independence_tests.parcorr_mult import ParCorrMult
     import tigramite.data_processing as pp
     import tigramite.plotting as tp
-    from tigramite.pc.pcstable import pcstable
+    from tigramite.pc.pcstable import PCStable
 
     # Set seeds for reproducibility
     ss = SeedSequence(12345)
@@ -1154,7 +1154,7 @@ if __name__ == "__main__":
     # and the indices of the dummies.
     jpcmciplus = JPCMCIplus(
         dataframe=dataframe,
-        pc=pcstable,
+        pc=PCStable(),
         cond_ind_test=ParCorrMult(significance="analytic"),
         node_classification=node_classification_jpcmci,
         verbosity=1,
