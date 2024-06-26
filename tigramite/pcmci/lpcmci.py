@@ -1,7 +1,7 @@
 import numpy as np
 from itertools import product, combinations
 
-from tigramite.pcmci._base import _PCMCIbase
+from tigramite.pcmci import _PCMCIbase
 
 
 class LPCMCI(_PCMCIbase):

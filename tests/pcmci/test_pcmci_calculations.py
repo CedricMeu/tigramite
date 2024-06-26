@@ -154,7 +154,7 @@ def a_test(request):
 # Parameterize and return the independence test.
 # Currently just a wrapper for ParCorr, but is extendable
 def a_pc_impl(request):
-    return PCStable()
+    return PCStable
 
 
 @pytest.fixture(params=[None])

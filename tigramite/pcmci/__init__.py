@@ -9,9 +9,10 @@ import itertools
 from copy import deepcopy
 import numpy as np
 from joblib import Parallel, delayed
+from tigramite import _CDAlgoBase
 
 
-class _PCMCIbase:
+class _PCMCIbase(_CDAlgoBase):
     r"""PCMCI base class.
 
     Parameters
@@ -49,31 +50,10 @@ class _PCMCIbase:
     """
 
     def __init__(self, dataframe, pc, cond_ind_test, verbosity=0):
-        # Set the data for this iteration of the algorithm
-        self.dataframe = dataframe
+        super().__init__(dataframe, cond_ind_test, verbosity)
 
         # Set pc implementation
-        self.pc = pc
-
-        # Set the conditional independence test to be used
-        self.cond_ind_test = cond_ind_test
-        if isinstance(self.cond_ind_test, type):
-            raise ValueError(
-                "PCMCI requires that cond_ind_test "
-                "is instantiated, e.g. cond_ind_test =  "
-                "ParCorr()."
-            )
-        self.cond_ind_test.set_dataframe(self.dataframe)
-
-        # Set the verbosity for debugging/logging messages
-        self.verbosity = verbosity
-
-        # Set the variable names
-        self.var_names = self.dataframe.var_names
-
-        # Store the shape of the data in the T and N variables
-        self.T = self.dataframe.T
-        self.N = self.dataframe.N
+        self.pc = pc(dataframe, cond_ind_test, verbosity)
 
     def _reverse_link(self, link):
         """Reverse a given link, taking care to replace > with < and vice versa."""

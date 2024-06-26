@@ -6,7 +6,7 @@
 
 from copy import deepcopy
 import numpy as np
-import sklearn
+from sklearn.linear_model import LinearRegression
 from joblib import Parallel, delayed
 from ortools.linear_solver import pywraplp
 import traceback
@@ -62,12 +62,12 @@ class RPCMCI(PCMCI):
     def __init__(
         self,
         dataframe,
+        pc,
         cond_ind_test=None,
         prediction_model=None,
         seed=None,
         verbosity=-1,
     ):
-
         self.verbosity = verbosity
 
         self.seed = seed
@@ -77,7 +77,7 @@ class RPCMCI(PCMCI):
         # Set prediction model to be used in optimization
         self.prediction_model = prediction_model
         if self.prediction_model is None:
-            self.prediction_model = sklearn.linear_model.LinearRegression()
+            self.prediction_model = LinearRegression()
 
         # Set conditional independence test
         if cond_ind_test is None:
@@ -96,7 +96,7 @@ class RPCMCI(PCMCI):
 
         # Init base class
         PCMCI.__init__(
-            self, dataframe=dataframe, cond_ind_test=cond_ind_test, verbosity=0
+            self, dataframe=dataframe, pc=pc, cond_ind_test=cond_ind_test, verbosity=0
         )
 
     def run_rpcmci(

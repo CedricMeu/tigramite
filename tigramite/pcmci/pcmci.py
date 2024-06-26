@@ -10,7 +10,7 @@ import itertools
 from copy import deepcopy
 import numpy as np
 
-from tigramite.pcmci._base import _PCMCIbase
+from tigramite.pcmci import _PCMCIbase
 
 
 class PCMCI(_PCMCIbase):
@@ -110,7 +110,6 @@ class PCMCI(_PCMCIbase):
     """
 
     def __init__(self, dataframe, pc, cond_ind_test, verbosity=0):
-
         # Init base class
         _PCMCIbase.__init__(
             self,
@@ -142,31 +141,6 @@ class PCMCI(_PCMCIbase):
         all_parents_excl_current = [p for p in all_parents if p != parent]
         for cond in itertools.combinations(all_parents_excl_current, conds_dim):
             yield list(cond)
-
-    def _sort_parents(self, parents_vals):
-        """Sort current parents according to test statistic values.
-
-        Sorting is from strongest to weakest absolute values.
-
-        Parameters
-        ---------
-        parents_vals : dict
-            Dictionary of form {(0, -1):float, ...} containing the minimum test
-            statistic value of a link.
-
-        Returns
-        -------
-        parents : list
-            List of form [(0, -1), (3, -2), ...] containing sorted parents.
-        """
-        if self.verbosity > 1:
-            print(
-                "\n    Sorting parents in decreasing order with "
-                "\n    weight(i-tau->j) = min_{iterations} |val_{ij}(tau)| "
-            )
-        # Get the absolute value for all the test statistics
-        abs_values = {k: np.abs(parents_vals[k]) for k in list(parents_vals)}
-        return sorted(abs_values, key=abs_values.get, reverse=True)
 
     def _print_link_info(
         self, j, index_parent, parent, num_parents, already_removed=False
@@ -368,30 +342,6 @@ class PCMCI(_PCMCIbase):
                 + "tau_min = %d, " % (tau_min)
                 + "but 0 <= tau_min <= tau_max"
             )
-
-    def _set_max_condition_dim(self, max_conds_dim, tau_min, tau_max):
-        """
-        Set the maximum dimension of the conditions. Defaults to self.N*tau_max.
-
-        Parameters
-        ----------
-        max_conds_dim : int
-            Input maximum condition dimension.
-        tau_max : int
-            Maximum tau.
-
-        Returns
-        -------
-        max_conds_dim : int
-            Input maximum condition dimension or default.
-        """
-        # Check if an input was given
-        if max_conds_dim is None:
-            max_conds_dim = self.N * (tau_max - tau_min + 1)
-        # Check this is a valid
-        if max_conds_dim < 0:
-            raise ValueError("maximum condition dimension must be >= 0")
-        return max_conds_dim
 
     def _print_parents_single(self, j, parents, val_min, pval_max):
         """Print current parents for variable j.

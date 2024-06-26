@@ -1,11 +1,12 @@
 from collections import defaultdict
 from copy import deepcopy
-from tigramite.pc._base import _PCbase
+from typing import Dict, List, Tuple
+from tigramite.pc import _PCbase
 from tigramite import _create_nested_dictionary, _nested_to_normal
 import numpy as np
 
 
-class PCStable:
+class PCStable(_PCbase):
     def __run_pc_stable_single(
         self,
         pcmci,
@@ -178,7 +179,7 @@ class PCStable:
                 del val_min[parent]
             # Return the parents list sorted by the test metric so that the
             # updated parents list is given to the next cond_dim loop
-            parents = pcmci._sort_parents(val_min)
+            parents = self._sort_parents(val_min)
             # Print information about the change in possible parents
             if pcmci.verbosity > 1:
                 print("\nUpdating parents:")
@@ -207,7 +208,7 @@ class PCStable:
         pc_alpha=0.2,
         max_conds_dim=None,
         max_combinations=1,
-    ):
+    ) -> Dict[int, List[Tuple[int, int]]]:
         """Lagged PC algorithm for estimating lagged parents of all variables.
 
         Parents are made available as self.all_parents
@@ -261,20 +262,25 @@ class PCStable:
 
         # Create an internal copy of pc_alpha
         _int_pc_alpha = deepcopy(pc_alpha)
+
         # Check if we are selecting an optimal alpha value
         select_optimal_alpha = True
+
         # Set the default values for pc_alpha
         if _int_pc_alpha is None:
             _int_pc_alpha = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5]
         elif not isinstance(_int_pc_alpha, (list, tuple, np.ndarray)):
             _int_pc_alpha = [_int_pc_alpha]
             select_optimal_alpha = False
+
         # Check the limits on tau_min
         pcmci._check_tau_limits(tau_min, tau_max)
         tau_min = max(1, tau_min)
+
         # Check that the maximum combinations variable is correct
         if max_combinations <= 0:
             raise ValueError("max_combinations must be > 0")
+
         # Implement defaultdict for all pval_max, val_max, and iterations
         pval_max = defaultdict(dict)
         val_min = defaultdict(dict)
@@ -300,6 +306,7 @@ class PCStable:
 
         # Initialize all parents
         all_parents = dict()
+
         # Set the maximum condition dimension
         max_conds_dim = pcmci._set_max_condition_dim(max_conds_dim, tau_min, tau_max)
 
@@ -309,8 +316,10 @@ class PCStable:
             if pcmci.verbosity > 1:
                 print("\n## Variable %s" % pcmci.var_names[j])
                 print("\nIterating through pc_alpha = %s:" % _int_pc_alpha)
+
             # Initialize the scores for selecting the optimal alpha
             score = np.zeros_like(_int_pc_alpha)
+
             # Initialize the result
             results = {}
             for iscore, pc_alpha_here in enumerate(_int_pc_alpha):
@@ -320,6 +329,7 @@ class PCStable:
                         "\n# pc_alpha = %s (%d/%d):"
                         % (pc_alpha_here, iscore + 1, score.shape[0])
                     )
+
                 # Get the results for this alpha value
                 results[pc_alpha_here] = self.__run_pc_stable_single(
                     pcmci,
@@ -332,29 +342,35 @@ class PCStable:
                     max_conds_dim=max_conds_dim,
                     max_combinations=max_combinations,
                 )
+
                 # Figure out the best score if there is more than one pc_alpha
                 # value
                 if select_optimal_alpha:
                     score[iscore] = pcmci.cond_ind_test.get_model_selection_criterion(
                         j, results[pc_alpha_here]["parents"], tau_max
                     )
+
             # Record the optimal alpha value
             optimal_alpha = _int_pc_alpha[score.argmin()]
+
             # Only print the selection results if there is more than one
             # pc_alpha
             if pcmci.verbosity > 1 and select_optimal_alpha:
                 pcmci._print_pc_sel_results(
                     _int_pc_alpha, results, j, score, optimal_alpha
                 )
+
             # Record the results for this variable
             all_parents[j] = results[optimal_alpha]["parents"]
             val_min[j] = results[optimal_alpha]["val_min"]
             val_dict[j] = results[optimal_alpha]["val_dict"]
             pval_max[j] = results[optimal_alpha]["pval_max"]
             iterations[j] = results[optimal_alpha]["iterations"]
+
             # Only save the optimal alpha if there is more than one pc_alpha
             if select_optimal_alpha:
                 iterations[j]["optimal_pc_alpha"] = optimal_alpha
+
         # Save the results in the current status of the algorithm
         pcmci.all_parents = all_parents
         pcmci.val_matrix = pcmci._dict_to_matrix(
