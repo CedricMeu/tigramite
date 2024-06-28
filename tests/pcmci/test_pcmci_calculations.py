@@ -205,8 +205,7 @@ def a_run_pc_stable(a_pcmci, a_pc_stable_params):
     # Unpack the pc_stable parameters
     pc_alpha, max_conds_dim, max_combinations, save_iter = a_pc_stable_params
     # Run PC stable
-    pcmci.pc(
-        pcmci,
+    all_parents, *_ = pcmci.pc(
         link_assumptions=None,
         tau_min=tau_min,
         tau_max=tau_max,
@@ -216,7 +215,7 @@ def a_run_pc_stable(a_pcmci, a_pc_stable_params):
         max_combinations=max_combinations,
     )
     # Return the calculated and expected results
-    return pcmci.all_parents, true_parents
+    return all_parents, true_parents
 
 
 def test_pc_stable(a_run_pc_stable):

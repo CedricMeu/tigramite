@@ -607,8 +607,14 @@ class JPCMCIplus(PCMCI):
         if self.verbosity > 0:
             print("\n##\n## J-PCMCI+ Step 1: Selecting lagged conditioning sets\n##")
 
-        lagged_parents = self.pc(
-            self,
+        (
+            self.all_parents,
+            self.val_matrix,
+            self.p_matrix,
+            self.iterations,
+            self.val_min,
+            self.pval_max,
+        ) = self.pc(
             link_assumptions=link_assumptions,
             tau_min=tau_min,
             tau_max=tau_max,
@@ -616,6 +622,7 @@ class JPCMCIplus(PCMCI):
             max_conds_dim=max_conds_dim,
             max_combinations=max_combinations,
         )
+        lagged_parents = self.all_parents
 
         self.mode = "context_search"
 

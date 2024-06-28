@@ -1838,7 +1838,7 @@ class Prediction(Models, PCMCI):
             PCMCI.__init__(
                 self,
                 dataframe=self.dataframe,
-                pc=PCStable(),
+                pc=PCStable,
                 cond_ind_test=cond_ind_test,
                 verbosity=verbosity,
             )
@@ -1913,20 +1913,30 @@ class Prediction(Models, PCMCI):
         # Ensure an independence model is given
         if self.cond_ind_test is None:
             raise ValueError("No cond_ind_test given!")
+
         # Set the selected variables
         self.selected_variables = range(self.N)
         if selected_targets is not None:
             self.selected_variables = selected_targets
-        predictors = self.pc(
-            self,
+
+        (
+            self.all_parents,
+            self.val_matrix,
+            self.p_matrix,
+            self.iterations,
+            self.val_min,
+            self.pval_max,
+        ) = self.pc(
             link_assumptions=link_assumptions,
             tau_min=steps_ahead,
             tau_max=tau_max,
-            save_iterations=False,
             pc_alpha=pc_alpha,
+            save_iterations=False,
             max_conds_dim=max_conds_dim,
             max_combinations=max_combinations,
         )
+
+        predictors = self.all_parents
         return predictors
 
     def fit(

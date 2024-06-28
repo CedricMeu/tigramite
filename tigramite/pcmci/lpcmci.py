@@ -1,10 +1,10 @@
 import numpy as np
 from itertools import product, combinations
 
-from tigramite.pcmci import _PCMCIbase
+from tigramite.pcmci import _PCMCIBase
 
 
-class LPCMCI(_PCMCIbase):
+class LPCMCI(_PCMCIBase):
     r"""LPCMCI is an algorithm for causal discovery in large-scale times series that allows for latent confounders and
     learns lag-specific causal relationships. The algorithm is introduced and explained in:
 
@@ -177,7 +177,7 @@ class LPCMCI(_PCMCIbase):
         iii)    some instance attributes"""
 
         # Init base class
-        _PCMCIbase.__init__(
+        _PCMCIBase.__init__(
             self,
             dataframe=dataframe,
             pc=pc,

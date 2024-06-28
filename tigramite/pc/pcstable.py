@@ -1,15 +1,14 @@
 from collections import defaultdict
 from copy import deepcopy
 from typing import Dict, List, Tuple
-from tigramite.pc import _PCbase
+from tigramite.pc import _PCBase
 from tigramite import _create_nested_dictionary, _nested_to_normal
 import numpy as np
 
 
-class PCStable(_PCbase):
+class PCStable(_PCBase):
     def __run_pc_stable_single(
         self,
-        pcmci,
         j,
         link_assumptions_j=None,
         tau_min=1,
@@ -98,7 +97,7 @@ class PCStable(_PCbase):
         tau_min = max(1, tau_min)
 
         # Loop over all possible condition dimensions
-        max_conds_dim = pcmci._set_max_condition_dim(max_conds_dim, tau_min, tau_max)
+        max_conds_dim = self._set_max_condition_dim(max_conds_dim, tau_min, tau_max)
         # Iteration through increasing number of conditions, i.e. from
         # [0, max_conds_dim] inclusive
         converged = False
@@ -110,18 +109,18 @@ class PCStable(_PCbase):
                 converged = True
                 break
             # Print information about
-            if pcmci.verbosity > 1:
+            if self.verbosity > 1:
                 print("\nTesting condition sets of dimension %d:" % conds_dim)
 
             # Iterate through all possible pairs (that have not converged yet)
             for index_parent, parent in enumerate(parents):
                 # Print info about this link
-                if pcmci.verbosity > 1:
-                    pcmci._print_link_info(j, index_parent, parent, len(parents))
+                if self.verbosity > 1:
+                    self._print_link_info(j, index_parent, parent, len(parents))
                 # Iterate through all possible combinations
                 nonsig = False
                 for comb_index, Z in enumerate(
-                    pcmci._iter_conditions(parent, conds_dim, parents)
+                    self._iter_conditions(parent, conds_dim, parents)
                 ):
                     # Break if we try too many combinations
                     if comb_index >= max_combinations:
@@ -135,7 +134,7 @@ class PCStable(_PCbase):
                         pval = 0.0
                         dependent = True
                     else:
-                        val, pval, dependent = pcmci.cond_ind_test.run_test(
+                        val, pval, dependent = self.cond_ind_test.run_test(
                             X=[parent],
                             Y=[(j, 0)],
                             Z=Z,
@@ -144,8 +143,8 @@ class PCStable(_PCbase):
                         )
 
                     # Print some information if needed
-                    if pcmci.verbosity > 1:
-                        pcmci._print_cond_info(Z, comb_index, pval, val)
+                    if self.verbosity > 1:
+                        self._print_cond_info(Z, comb_index, pval, val)
 
                     # Keep track of maximum p-value and minimum estimated value
                     # for each pair (across any condition)
@@ -171,8 +170,8 @@ class PCStable(_PCbase):
                         break
 
                 # Print the results if needed
-                if pcmci.verbosity > 1:
-                    pcmci._print_a_pc_result(nonsig, conds_dim, max_combinations)
+                if self.verbosity > 1:
+                    self._print_a_pc_result(nonsig, conds_dim, max_combinations)
 
             # Remove non-significant links
             for _, parent in nonsig_parents:
@@ -181,13 +180,13 @@ class PCStable(_PCbase):
             # updated parents list is given to the next cond_dim loop
             parents = self._sort_parents(val_min)
             # Print information about the change in possible parents
-            if pcmci.verbosity > 1:
+            if self.verbosity > 1:
                 print("\nUpdating parents:")
-                pcmci._print_parents_single(j, parents, val_min, pval_max)
+                self._print_parents_single(j, parents, val_min, pval_max)
 
         # Print information about if convergence was reached
-        if pcmci.verbosity > 1:
-            pcmci._print_converged_pc_single(converged, j, max_conds_dim)
+        if self.verbosity > 1:
+            self._print_converged_pc_single(converged, j, max_conds_dim)
         # Return the results
         return {
             "parents": parents,
@@ -199,16 +198,22 @@ class PCStable(_PCbase):
 
     def __call__(
         self,
-        pcmci,
         selected_links=None,
         link_assumptions=None,
         tau_min=1,
         tau_max=1,
         save_iterations=False,
-        pc_alpha=0.2,
+        pc_alpha=0.02,
         max_conds_dim=None,
         max_combinations=1,
-    ) -> Dict[int, List[Tuple[int, int]]]:
+    ) -> Tuple[
+        Dict[int, List[Tuple[int, int]]],
+        np.ndarray,
+        np.ndarray,
+        Dict[int, Dict],
+        Dict[int, Dict],
+        Dict[int, Dict],
+    ]:
         """Lagged PC algorithm for estimating lagged parents of all variables.
 
         Parents are made available as self.all_parents
@@ -274,7 +279,7 @@ class PCStable(_PCbase):
             select_optimal_alpha = False
 
         # Check the limits on tau_min
-        pcmci._check_tau_limits(tau_min, tau_max)
+        self._check_tau_limits(tau_min, tau_max)
         tau_min = max(1, tau_min)
 
         # Check that the maximum combinations variable is correct
@@ -287,8 +292,8 @@ class PCStable(_PCbase):
         val_dict = defaultdict(dict)
         iterations = defaultdict(dict)
 
-        if pcmci.verbosity > 0:
-            pcmci._print_pc_params(
+        if self.verbosity > 0:
+            self._print_pc_params(
                 link_assumptions,
                 tau_min,
                 tau_max,
@@ -300,7 +305,7 @@ class PCStable(_PCbase):
         # Set the selected links
         # _int_sel_links = self._set_sel_links(selected_links, tau_min, tau_max,
         #                                      remove_contemp=True)
-        _int_link_assumptions = pcmci._set_link_assumptions(
+        _int_link_assumptions = self._set_link_assumptions(
             link_assumptions, tau_min, tau_max, remove_contemp=True
         )
 
@@ -308,13 +313,13 @@ class PCStable(_PCbase):
         all_parents = dict()
 
         # Set the maximum condition dimension
-        max_conds_dim = pcmci._set_max_condition_dim(max_conds_dim, tau_min, tau_max)
+        max_conds_dim = self._set_max_condition_dim(max_conds_dim, tau_min, tau_max)
 
         # Loop through the selected variables
-        for j in range(pcmci.N):
+        for j in range(self.N):
             # Print the status of this variable
-            if pcmci.verbosity > 1:
-                print("\n## Variable %s" % pcmci.var_names[j])
+            if self.verbosity > 1:
+                print("\n## Variable %s" % self.var_names[j])
                 print("\nIterating through pc_alpha = %s:" % _int_pc_alpha)
 
             # Initialize the scores for selecting the optimal alpha
@@ -324,7 +329,7 @@ class PCStable(_PCbase):
             results = {}
             for iscore, pc_alpha_here in enumerate(_int_pc_alpha):
                 # Print statement about the pc_alpha being tested
-                if pcmci.verbosity > 1:
+                if self.verbosity > 1:
                     print(
                         "\n# pc_alpha = %s (%d/%d):"
                         % (pc_alpha_here, iscore + 1, score.shape[0])
@@ -332,7 +337,6 @@ class PCStable(_PCbase):
 
                 # Get the results for this alpha value
                 results[pc_alpha_here] = self.__run_pc_stable_single(
-                    pcmci,
                     j,
                     link_assumptions_j=_int_link_assumptions[j],
                     tau_min=tau_min,
@@ -346,7 +350,7 @@ class PCStable(_PCbase):
                 # Figure out the best score if there is more than one pc_alpha
                 # value
                 if select_optimal_alpha:
-                    score[iscore] = pcmci.cond_ind_test.get_model_selection_criterion(
+                    score[iscore] = self.cond_ind_test.get_model_selection_criterion(
                         j, results[pc_alpha_here]["parents"], tau_max
                     )
 
@@ -355,8 +359,8 @@ class PCStable(_PCbase):
 
             # Only print the selection results if there is more than one
             # pc_alpha
-            if pcmci.verbosity > 1 and select_optimal_alpha:
-                pcmci._print_pc_sel_results(
+            if self.verbosity > 1 and select_optimal_alpha:
+                self._print_pc_sel_results(
                     _int_pc_alpha, results, j, score, optimal_alpha
                 )
 
@@ -372,17 +376,13 @@ class PCStable(_PCbase):
                 iterations[j]["optimal_pc_alpha"] = optimal_alpha
 
         # Save the results in the current status of the algorithm
-        pcmci.all_parents = all_parents
-        pcmci.val_matrix = pcmci._dict_to_matrix(
-            val_dict, tau_max, pcmci.N, default=0.0
-        )
-        pcmci.p_matrix = pcmci._dict_to_matrix(pval_max, tau_max, pcmci.N, default=1.0)
-        pcmci.iterations = iterations
-        pcmci.val_min = val_min
-        pcmci.pval_max = pval_max
+        val_matrix = self._dict_to_matrix(val_dict, tau_max, self.N, default=0.0)
+        p_matrix = self._dict_to_matrix(pval_max, tau_max, self.N, default=1.0)
+
         # Print the results
-        if pcmci.verbosity > 0:
+        if self.verbosity > 0:
             print("\n## Resulting lagged parent (super)sets:")
-            pcmci._print_parents(all_parents, val_min, pval_max)
+            self._print_parents(all_parents, val_min, pval_max)
+
         # Return the parents
-        return all_parents
+        return (all_parents, val_matrix, p_matrix, iterations, val_min, pval_max)
