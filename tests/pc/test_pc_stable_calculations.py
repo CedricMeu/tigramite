@@ -50,7 +50,7 @@ def a_pcstable(a_sample, a_test, a_common_params):
     return pc, true_parents, tau_min, tau_max, select_links
 
 
-# PC_STABLE TESTING ############################################################
+# PCStable TESTING ############################################################
 @pytest.fixture(
     params=[
         # Keep parameters for the pc_stable algorithm here
