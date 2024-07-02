@@ -14,39 +14,11 @@ from tigramite.independence_tests.parcorr import ParCorr
 import tigramite.data_processing as pp
 from tigramite.toymodels import structural_causal_processes as toys
 
-from test_pcmci_calculations import a_chain, a_pc_impl
+from tests import VERBOSITY, _get_parent_graph, a_chain
+from tests.pcmci.test_pcmci_calculations import a_pc_impl
 
 # Pylint settings
 # pylint: disable=redefined-outer-name
-
-# Define the verbosity at the global scope
-VERBOSITY = 1
-
-
-# CONVENIENCE FUNCTIONS ########################################################
-def _get_parent_graph(parents_neighbors_coeffs, exclude=None):
-    """
-    Iterates through the input parent-neighghbour coefficient dictionary to
-    return only parent relations (i.e. where tau != 0)
-    """
-    graph = defaultdict(list)
-    for j, i, tau, _ in toys._iter_coeffs(parents_neighbors_coeffs):
-        if tau != 0 and (i, tau) != exclude:
-            graph[j].append((i, tau))
-    return dict(graph)
-
-
-def _select_links(link_ids, true_parents):
-    """
-    Select links given by  from the true parents dictionary
-    """
-    if link_ids is None:
-        return None
-    return {
-        par: {true_parents[par][link]: "-->"}
-        for par in true_parents
-        for link in link_ids
-    }
 
 
 # TEST LINK GENERATION #########################################################
