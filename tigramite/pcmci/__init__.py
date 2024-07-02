@@ -5,17 +5,14 @@
 # License: GNU General Public License v3.0
 
 from __future__ import print_function
-import warnings
 import itertools
-from collections import defaultdict
 from copy import deepcopy
 import numpy as np
-import scipy.stats
-import math
 from joblib import Parallel, delayed
+from tigramite import _CDAlgoBase
 
 
-class PCMCIbase:
+class _PCMCIBase(_CDAlgoBase):
     r"""PCMCI base class.
 
     Parameters
@@ -52,219 +49,11 @@ class PCMCIbase:
         Time series sample length of dataset(s).
     """
 
-    def __init__(self, dataframe, cond_ind_test, verbosity=0):
-        # Set the data for this iteration of the algorithm
-        self.dataframe = dataframe
-        # Set the conditional independence test to be used
-        self.cond_ind_test = cond_ind_test
-        if isinstance(self.cond_ind_test, type):
-            raise ValueError(
-                "PCMCI requires that cond_ind_test "
-                "is instantiated, e.g. cond_ind_test =  "
-                "ParCorr()."
-            )
-        self.cond_ind_test.set_dataframe(self.dataframe)
-        # Set the verbosity for debugging/logging messages
-        self.verbosity = verbosity
-        # Set the variable names
-        self.var_names = self.dataframe.var_names
+    def __init__(self, dataframe, pc, cond_ind_test, verbosity=0):
+        super().__init__(dataframe, cond_ind_test, verbosity)
 
-        # Store the shape of the data in the T and N variables
-        self.T = self.dataframe.T
-        self.N = self.dataframe.N
-
-    def _reverse_link(self, link):
-        """Reverse a given link, taking care to replace > with < and vice versa."""
-
-        if link == "":
-            return ""
-
-        if link[2] == ">":
-            left_mark = "<"
-        else:
-            left_mark = link[2]
-
-        if link[0] == "<":
-            right_mark = ">"
-        else:
-            right_mark = link[0]
-
-        return left_mark + link[1] + right_mark
-
-    def _check_cyclic(self, link_dict):
-        """Return True if the link_dict has a contemporaneous cycle."""
-
-        path = set()
-        visited = set()
-
-        def visit(vertex):
-            if vertex in visited:
-                return False
-            visited.add(vertex)
-            path.add(vertex)
-            for itaui in link_dict.get(vertex, ()):
-                i, taui = itaui
-                link_type = link_dict[vertex][itaui]
-                if taui == 0 and link_type in ["-->", "-?>"]:
-                    if i in path or visit(i):
-                        return True
-            path.remove(vertex)
-            return False
-
-        return any(visit(v) for v in link_dict)
-
-    def _set_link_assumptions(
-        self, link_assumptions, tau_min, tau_max, remove_contemp=False
-    ):
-        """Helper function to set and check the link_assumptions argument
-
-        Parameters
-        ----------
-        link_assumptions : dict
-            Dictionary of form {j:{(i, -tau): link_type, ...}, ...} specifying
-            assumptions about links. This initializes the graph with entries
-            graph[i,j,tau] = link_type. For example, graph[i,j,0] = '-->'
-            implies that a directed link from i to j at lag 0 must exist.
-            Valid link types are 'o-o', '-->', '<--'. In addition, the middle
-            mark can be '?' instead of '-'. Then '-?>' implies that this link
-            may not exist, but if it exists, its orientation is '-->'. Link
-            assumptions need to be consistent, i.e., graph[i,j,0] = '-->'
-            requires graph[j,i,0] = '<--' and acyclicity must hold. If a link
-            does not appear in the dictionary, it is assumed absent. That is,
-            if link_assumptions is not None, then all links have to be specified
-            or the links are assumed absent.
-        tau_mix : int
-            Minimum time delay to test.
-        tau_max : int
-            Maximum time delay to test.
-        remove_contemp : bool
-            Whether contemporaneous links (at lag zero) should be removed.
-
-        Returns
-        -------
-        link_assumptions : dict
-            Cleaned links.
-        """
-        # Copy and pass into the function
-        _int_link_assumptions = deepcopy(link_assumptions)
-        # Set the default selected links if none are set
-        _vars = list(range(self.N))
-        _lags = list(range(-(tau_max), -tau_min + 1, 1))
-        if _int_link_assumptions is None:
-            _int_link_assumptions = {}
-            # Set the default as all combinations
-            for j in _vars:
-                _int_link_assumptions[j] = {}
-                for i in _vars:
-                    for lag in range(tau_min, tau_max + 1):
-                        if not (i == j and lag == 0):
-                            if lag == 0:
-                                _int_link_assumptions[j][(i, 0)] = "o?o"
-                            else:
-                                _int_link_assumptions[j][(i, -lag)] = "-?>"
-
-        else:
-            if remove_contemp:
-                for j in _int_link_assumptions.keys():
-                    _int_link_assumptions[j] = {
-                        link: _int_link_assumptions[j][link]
-                        for link in _int_link_assumptions[j]
-                        if link[1] != 0
-                    }
-
-        # Make contemporaneous assumptions consistent and orient lagged links
-        for j in _vars:
-            for link in _int_link_assumptions[j]:
-                i, tau = link
-                link_type = _int_link_assumptions[j][link]
-                if tau == 0:
-                    if (j, 0) in _int_link_assumptions[i]:
-                        if _int_link_assumptions[j][link] != self._reverse_link(
-                            _int_link_assumptions[i][(j, 0)]
-                        ):
-                            raise ValueError(
-                                "Inconsistent link assumptions for indices %d - %d "
-                                % (i, j)
-                            )
-                    else:
-                        _int_link_assumptions[i][(j, 0)] = self._reverse_link(
-                            _int_link_assumptions[j][link]
-                        )
-                else:
-                    # Orient lagged links by time order while leaving the middle mark
-                    new_link_type = "-" + link_type[1] + ">"
-                    _int_link_assumptions[j][link] = new_link_type
-
-        # Otherwise, check that our assumpions are sane
-        # Check that the link_assumptions refer to links that are inside the
-        # data range and types
-        _key_set = set(_int_link_assumptions.keys())
-        valid_entries = _key_set == set(range(self.N))
-
-        valid_types = [
-            "o-o",
-            "o?o",
-            "-->",
-            "-?>",
-            "<--",
-            "<?-",
-        ]
-
-        for links in _int_link_assumptions.values():
-            if isinstance(links, dict) and len(links) == 0:
-                continue
-            for var, lag in links:
-                if var not in _vars or lag not in _lags:
-                    valid_entries = False
-                if links[(var, lag)] not in valid_types:
-                    valid_entries = False
-
-        if not valid_entries:
-            raise ValueError(
-                "link_assumptions"
-                " must be dictionary with keys for all [0,...,N-1]"
-                " variables and contain only links from "
-                "these variables in range [tau_min, tau_max] "
-                "and with link types in %s" % str(valid_types)
-            )
-
-        # Check for contemporaneous cycles
-        if self._check_cyclic(_int_link_assumptions):
-            raise ValueError("link_assumptions has contemporaneous cycle(s).")
-
-        # Return the _int_link_assumptions
-        return _int_link_assumptions
-
-    def _dict_to_matrix(self, val_dict, tau_max, n_vars, default=1.0):
-        """Helper function to convert dictionary to matrix format.
-
-        Parameters
-        ---------
-        val_dict : dict
-            Dictionary of form {0:{(0, -1):float, ...}, 1:{...}, ...}.
-        tau_max : int
-            Maximum lag.
-        n_vars : int
-            Number of variables.
-        default : int
-            Default value for entries not part of val_dict.
-
-        Returns
-        -------
-        matrix : array of shape (N, N, tau_max+1)
-            Matrix format of p-values and test statistic values.
-        """
-        matrix = np.ones((n_vars, n_vars, tau_max + 1))
-        matrix *= default
-
-        for j in val_dict.keys():
-            for link in val_dict[j].keys():
-                k, tau = link
-                if tau == 0:
-                    matrix[k, j, 0] = matrix[j, k, 0] = val_dict[j][link]
-                else:
-                    matrix[k, j, abs(tau)] = val_dict[j][link]
-        return matrix
+        # Set pc implementation
+        self.pc = pc(dataframe, cond_ind_test, verbosity)
 
     def get_corrected_pvalues(
         self,

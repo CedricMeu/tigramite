@@ -5,16 +5,13 @@
 # License: GNU General Public License v3.0
 
 from __future__ import print_function
-from abc import abstractmethod
-import warnings
-import itertools
 from collections import defaultdict
+import itertools
 from copy import deepcopy
 import numpy as np
 
 from multiprocessing import Pool
-
-from .pcmci_base import PCMCIbase
+from tigramite.pcmci import _PCMCIBase
 
 
 def _create_nested_dictionary(depth=0, lowest_type=dict):
@@ -86,7 +83,7 @@ def run_cond_ind_test(
     return val, pval, dependent
 
 
-class PCMCI(PCMCIbase):
+class PCMCI(_PCMCIBase):
     r"""PCMCI causal discovery for time series datasets.
 
     PCMCI is a causal discovery framework for large-scale time series
@@ -181,353 +178,6 @@ class PCMCI(PCMCIbase):
     T : dict
         Time series sample length of dataset(s).
     """
-
-    def __init__(self, dataframe, cond_ind_test, verbosity=0):
-        # Init base class
-        PCMCIbase.__init__(
-            self, dataframe=dataframe, cond_ind_test=cond_ind_test, verbosity=verbosity
-        )
-
-    def _iter_conditions(self, parent, conds_dim, all_parents):
-        """Yield next condition.
-
-        Yields next condition from lexicographically ordered conditions.
-
-        Parameters
-        ----------
-        parent : tuple
-            Tuple of form (i, -tau).
-        conds_dim : int
-            Cardinality in current step.
-        all_parents : list
-            List of form [(0, -1), (3, -2), ...].
-
-        Yields
-        -------
-        cond :  list
-            List of form [(0, -1), (3, -2), ...] for the next condition.
-        """
-        all_parents_excl_current = [p for p in all_parents if p != parent]
-        for cond in itertools.combinations(all_parents_excl_current, conds_dim):
-            yield list(cond)
-
-    def _sort_parents(self, parents_vals):
-        """Sort current parents according to test statistic values.
-
-        Sorting is from strongest to weakest absolute values.
-
-        Parameters
-        ---------
-        parents_vals : dict
-            Dictionary of form {(0, -1):float, ...} containing the minimum test
-            statistic value of a link.
-
-        Returns
-        -------
-        parents : list
-            List of form [(0, -1), (3, -2), ...] containing sorted parents.
-        """
-        if self.verbosity > 1:
-            print(
-                "\n    Sorting parents in decreasing order with "
-                "\n    weight(i-tau->j) = min_{iterations} |val_{ij}(tau)| "
-            )
-        # Get the absolute value for all the test statistics
-        abs_values = {k: np.abs(parents_vals[k]) for k in list(parents_vals)}
-        return sorted(abs_values, key=abs_values.get, reverse=True)
-
-    def _print_link_info(
-        self, j, index_parent, parent, num_parents, already_removed=False
-    ):
-        """Print info about the current link being tested.
-
-        Parameters
-        ----------
-        j : int
-            Index of current node being tested.
-        index_parent : int
-            Index of the current parent.
-        parent : tuple
-            Standard (i, tau) tuple of parent node id and time delay
-        num_parents : int
-            Total number of parents.
-        already_removed : bool
-            Whether parent was already removed.
-        """
-        link_marker = {True: "o?o", False: "-?>"}
-
-        abstau = abs(parent[1])
-        if self.verbosity > 1:
-            print(
-                "\n    Link (%s % d) %s %s (%d/%d):"
-                % (
-                    self.var_names[parent[0]],
-                    parent[1],
-                    link_marker[abstau == 0],
-                    self.var_names[j],
-                    index_parent + 1,
-                    num_parents,
-                )
-            )
-
-            if already_removed:
-                print("    Already removed.")
-
-    def _print_cond_info(self, Z, comb_index, pval, val):
-        """Print info about the condition
-
-        Parameters
-        ----------
-        Z : list
-            The current condition being tested.
-        comb_index : int
-            Index of the combination yielding this condition.
-        pval : float
-            p-value from this condition.
-        val : float
-            value from this condition.
-        """
-        var_name_z = ""
-        for i, tau in Z:
-            var_name_z += "(%s % .2s) " % (self.var_names[i], tau)
-        if len(Z) == 0:
-            var_name_z = "()"
-        print(
-            "    Subset %d: %s gives pval = %.5f / val = % .3f"
-            % (comb_index, var_name_z, pval, val)
-        )
-
-    def _print_a_pc_result(self, nonsig, conds_dim, max_combinations):
-        """Print the results from the current iteration of conditions.
-
-        Parameters
-        ----------
-        nonsig : bool
-            Indicate non-significance.
-        conds_dim : int
-            Cardinality of the current step.
-        max_combinations : int
-            Maximum number of combinations of conditions of current cardinality
-            to test.
-        """
-        # Start with an indent
-        print_str = "    "
-        # Determine the body of the text
-        if nonsig:
-            print_str += "Non-significance detected."
-        elif conds_dim > max_combinations:
-            print_str += (
-                "Still subsets of dimension"
-                + " %d left," % (conds_dim)
-                + " but q_max = %d reached." % (max_combinations)
-            )
-        else:
-            print_str += "No conditions of dimension %d left." % (conds_dim)
-        # Print the message
-        print(print_str)
-
-    def _print_converged_pc_single(self, converged, j, max_conds_dim):
-        """
-        Print statement about the convergence of the pc_stable_single algorithm.
-
-        Parameters
-        ----------
-        convergence : bool
-            true if convergence was reached.
-        j : int
-            Variable index.
-        max_conds_dim : int
-            Maximum number of conditions to test.
-        """
-        if converged:
-            print("\nAlgorithm converged for variable %s" % self.var_names[j])
-        else:
-            print(
-                "\nAlgorithm not yet converged, but max_conds_dim = %d"
-                " reached." % max_conds_dim
-            )
-
-    def _run_pc_stable_single(
-        self,
-        j,
-        link_assumptions_j,
-        tau_min=1,
-        tau_max=1,
-        save_iterations=False,
-        pc_alpha=0.2,
-        max_conds_dim=None,
-        max_combinations=1,
-    ):
-        """Lagged PC algorithm for estimating lagged parents of single variable.
-
-        Parameters
-        ----------
-        j : int
-            Variable index.
-        link_assumptions_j : dict
-            Dictionary of form {j:{(i, -tau): link_type, ...}, ...} specifying
-            assumptions about links. This initializes the graph with entries
-            graph[i,j,tau] = link_type. For example, graph[i,j,0] = '-->'
-            implies that a directed link from i to j at lag 0 must exist.
-            Valid link types are 'o-o', '-->', '<--'. In addition, the middle
-            mark can be '?' instead of '-'. Then '-?>' implies that this link
-            may not exist, but if it exists, its orientation is '-->'. Link
-            assumptions need to be consistent, i.e., graph[i,j,0] = '-->'
-            requires graph[j,i,0] = '<--' and acyclicity must hold. If a link
-            does not appear in the dictionary, it is assumed absent. That is,
-            if link_assumptions is not None, then all links have to be specified
-            or the links are assumed absent.
-        tau_min : int, optional (default: 1)
-            Minimum time lag to test. Useful for variable selection in
-            multi-step ahead predictions. Must be greater zero.
-        tau_max : int, optional (default: 1)
-            Maximum time lag. Must be larger or equal to tau_min.
-        save_iterations : bool, optional (default: False)
-            Whether to save iteration step results such as conditions used.
-        pc_alpha : float or None, optional (default: 0.2)
-            Significance level in algorithm. If a list is given, pc_alpha is
-            optimized using model selection criteria provided in the
-            cond_ind_test class as get_model_selection_criterion(). If None,
-            a default list of values is used.
-        max_conds_dim : int, optional (default: None)
-            Maximum number of conditions to test. If None is passed, this number
-            is unrestricted.
-        max_combinations : int, optional (default: 1)
-            Maximum number of combinations of conditions of current cardinality
-            to test in PC1 step.
-
-        Returns
-        -------
-        parents : list
-            List of estimated parents.
-        val_min : dict
-            Dictionary of form {(0, -1):float, ...} containing the minimum absolute
-            test statistic value of a link.
-        pval_max : dict
-            Dictionary of form {(0, -1):float, ...} containing the maximum
-            p-value of a link across different conditions.
-        iterations : dict
-            Dictionary containing further information on algorithm steps.
-        """
-
-        if pc_alpha < 0.0 or pc_alpha > 1.0:
-            raise ValueError("Choose 0 <= pc_alpha <= 1")
-
-        # Initialize the dictionaries for the pval_max, val_dict, val_min
-        # results
-        pval_max = dict()
-        val_dict = dict()
-        val_min = dict()
-        # Initialize the parents values from the selected links, copying to
-        # ensure this initial argument is unchanged.
-        parents = []
-        for itau in link_assumptions_j:
-            link_type = link_assumptions_j[itau]
-            if itau != (j, 0) and link_type not in ["<--", "<?-"]:
-                parents.append(itau)
-
-        val_dict = {(p[0], p[1]): None for p in parents}
-        pval_max = {(p[0], p[1]): None for p in parents}
-
-        # Define a nested defaultdict of depth 4 to save all information about
-        # iterations
-        iterations = _create_nested_dictionary(4)
-        # Ensure tau_min is at least 1
-        tau_min = max(1, tau_min)
-
-        # Loop over all possible condition dimensions
-        max_conds_dim = self._set_max_condition_dim(max_conds_dim, tau_min, tau_max)
-        # Iteration through increasing number of conditions, i.e. from
-        # [0, max_conds_dim] inclusive
-        converged = False
-        for conds_dim in range(max_conds_dim + 1):
-            # (Re)initialize the list of non-significant links
-            nonsig_parents = list()
-            # Check if the algorithm has converged
-            if len(parents) - 1 < conds_dim:
-                converged = True
-                break
-            # Print information about
-            if self.verbosity > 1:
-                print("\nTesting condition sets of dimension %d:" % conds_dim)
-
-            # Iterate through all possible pairs (that have not converged yet)
-            for index_parent, parent in enumerate(parents):
-                # Print info about this link
-                if self.verbosity > 1:
-                    self._print_link_info(j, index_parent, parent, len(parents))
-                # Iterate through all possible combinations
-                nonsig = False
-                for comb_index, Z in enumerate(
-                    self._iter_conditions(parent, conds_dim, parents)
-                ):
-                    # Break if we try too many combinations
-                    if comb_index >= max_combinations:
-                        break
-                    # Perform independence test
-                    if link_assumptions_j[parent] == "-->":
-                        val = 1.0
-                        pval = 0.0
-                        dependent = True
-                    else:
-                        val, pval, dependent = self.cond_ind_test.run_test(
-                            X=[parent],
-                            Y=[(j, 0)],
-                            Z=Z,
-                            tau_max=tau_max,
-                            alpha_or_thres=pc_alpha,
-                        )
-                    # Print some information if needed
-                    if self.verbosity > 1:
-                        self._print_cond_info(Z, comb_index, pval, val)
-                    # Keep track of maximum p-value and minimum estimated value
-                    # for each pair (across any condition)
-                    val_min[parent] = min(
-                        np.abs(val), val_min.get(parent, float("inf"))
-                    )
-
-                    if pval_max[parent] is None or pval > pval_max[parent]:
-                        pval_max[parent] = pval
-                        val_dict[parent] = val
-
-                    # Save the iteration if we need to
-                    if save_iterations:
-                        a_iter = iterations["iterations"][conds_dim][parent]
-                        a_iter[comb_index]["conds"] = deepcopy(Z)
-                        a_iter[comb_index]["val"] = val
-                        a_iter[comb_index]["pval"] = pval
-                    # Delete link later and break while-loop if non-significant
-                    if not dependent:  # pval > pc_alpha:
-                        nonsig_parents.append((j, parent))
-                        nonsig = True
-                        break
-
-                # Print the results if needed
-                if self.verbosity > 1:
-                    self._print_a_pc_result(nonsig, conds_dim, max_combinations)
-
-            # Remove non-significant links
-            for _, parent in nonsig_parents:
-                del val_min[parent]
-            # Return the parents list sorted by the test metric so that the
-            # updated parents list is given to the next cond_dim loop
-            parents = self._sort_parents(val_min)
-            # Print information about the change in possible parents
-            if self.verbosity > 1:
-                print("\nUpdating parents:")
-                self._print_parents_single(j, parents, val_min, pval_max)
-
-        # Print information about if convergence was reached
-        if self.verbosity > 1:
-            self._print_converged_pc_single(converged, j, max_conds_dim)
-        # Return the results
-        return {
-            "parents": parents,
-            "val_min": val_min,
-            "val_dict": val_dict,
-            "pval_max": pval_max,
-            "iterations": _nested_to_normal(iterations),
-        }
 
     def _run_pc_parallel_inner_single(
         self,
@@ -680,7 +330,7 @@ class PCMCI(PCMCIbase):
             result = defaultdict(list)
             for (parent, *_state_rest), _result in zip(
                 state,
-                pool.starmap(run_cond_ind_test, args)
+                pool.starmap(run_cond_ind_test, args),
                 # [run_cond_ind_test(*arg) for arg in args],
             ):
                 result[parent].append((*_state_rest, *_result))
@@ -745,291 +395,6 @@ class PCMCI(PCMCIbase):
             "pval_max": pval_max,
             "iterations": _nested_to_normal(iterations),
         }
-
-    def _print_pc_params(
-        self,
-        link_assumptions,
-        tau_min,
-        tau_max,
-        pc_alpha,
-        max_conds_dim,
-        max_combinations,
-    ):
-        """Print the setup of the current pc_stable run.
-
-        Parameters
-        ----------
-        link_assumptions : dict or None
-            Dictionary of form specifying which links should be tested.
-        tau_min : int, default: 1
-            Minimum time lag to test.
-        tau_max : int, default: 1
-            Maximum time lag to test.
-        pc_alpha : float or list of floats
-            Significance level in algorithm.
-        max_conds_dim : int
-            Maximum number of conditions to test.
-        max_combinations : int
-            Maximum number of combinations of conditions to test.
-        """
-        print(
-            "\n##\n## Step 1: PC1 algorithm for selecting lagged conditions\n##"
-            "\n\nParameters:"
-        )
-        if link_assumptions is not None:
-            print("link_assumptions = %s" % str(link_assumptions))
-        print(
-            "independence test = %s" % self.cond_ind_test.measure
-            + "\ntau_min = %d" % tau_min
-            + "\ntau_max = %d" % tau_max
-            + "\npc_alpha = %s" % pc_alpha
-            + "\nmax_conds_dim = %s" % max_conds_dim
-            + "\nmax_combinations = %d" % max_combinations
-        )
-        print("\n")
-
-    def _print_pc_sel_results(self, pc_alpha, results, j, score, optimal_alpha):
-        """Print the results from the pc_alpha selection.
-
-        Parameters
-        ----------
-        pc_alpha : list
-            Tested significance levels in algorithm.
-        results : dict
-            Results from the tested pc_alphas.
-        score : array of floats
-            scores from each pc_alpha.
-        j : int
-            Index of current variable.
-        optimal_alpha : float
-            Optimal value of pc_alpha.
-        """
-        print("\n# Condition selection results:")
-        for iscore, pc_alpha_here in enumerate(pc_alpha):
-            names_parents = "[ "
-            for pari in results[pc_alpha_here]["parents"]:
-                names_parents += "(%s % d) " % (self.var_names[pari[0]], pari[1])
-            names_parents += "]"
-            print(
-                "    pc_alpha=%s got score %.4f with parents %s"
-                % (pc_alpha_here, score[iscore], names_parents)
-            )
-        print(
-            "\n==> optimal pc_alpha for variable %s is %s"
-            % (self.var_names[j], optimal_alpha)
-        )
-
-    def _check_tau_limits(self, tau_min, tau_max):
-        """Check the tau limits adhere to 0 <= tau_min <= tau_max.
-
-        Parameters
-        ----------
-        tau_min : float
-            Minimum tau value.
-        tau_max : float
-            Maximum tau value.
-        """
-        if not 0 <= tau_min <= tau_max:
-            raise ValueError(
-                "tau_max = %d, " % (tau_max)
-                + "tau_min = %d, " % (tau_min)
-                + "but 0 <= tau_min <= tau_max"
-            )
-
-    def _set_max_condition_dim(self, max_conds_dim, tau_min, tau_max):
-        """
-        Set the maximum dimension of the conditions. Defaults to self.N*tau_max.
-
-        Parameters
-        ----------
-        max_conds_dim : int
-            Input maximum condition dimension.
-        tau_max : int
-            Maximum tau.
-
-        Returns
-        -------
-        max_conds_dim : int
-            Input maximum condition dimension or default.
-        """
-        # Check if an input was given
-        if max_conds_dim is None:
-            max_conds_dim = self.N * (tau_max - tau_min + 1)
-        # Check this is a valid
-        if max_conds_dim < 0:
-            raise ValueError("maximum condition dimension must be >= 0")
-        return max_conds_dim
-
-    def run_pc_stable(
-        self,
-        selected_links=None,
-        link_assumptions=None,
-        tau_min=1,
-        tau_max=1,
-        save_iterations=False,
-        pc_alpha=0.2,
-        max_conds_dim=None,
-        max_combinations=1,
-    ):
-        """Lagged PC algorithm for estimating lagged parents of all variables.
-
-        Parents are made available as self.all_parents
-
-        Parameters
-        ----------
-        selected_links : dict or None
-            Deprecated, replaced by link_assumptions
-        link_assumptions : dict
-            Dictionary of form {j:{(i, -tau): link_type, ...}, ...} specifying
-            assumptions about links. This initializes the graph with entries
-            graph[i,j,tau] = link_type. For example, graph[i,j,0] = '-->'
-            implies that a directed link from i to j at lag 0 must exist.
-            Valid link types are 'o-o', '-->', '<--'. In addition, the middle
-            mark can be '?' instead of '-'. Then '-?>' implies that this link
-            may not exist, but if it exists, its orientation is '-->'. Link
-            assumptions need to be consistent, i.e., graph[i,j,0] = '-->'
-            requires graph[j,i,0] = '<--' and acyclicity must hold. If a link
-            does not appear in the dictionary, it is assumed absent. That is,
-            if link_assumptions is not None, then all links have to be specified
-            or the links are assumed absent.
-        tau_min : int, default: 1
-            Minimum time lag to test. Useful for multi-step ahead predictions.
-            Must be greater zero.
-        tau_max : int, default: 1
-            Maximum time lag. Must be larger or equal to tau_min.
-        save_iterations : bool, default: False
-            Whether to save iteration step results such as conditions used.
-        pc_alpha : float or list of floats, default: [0.05, 0.1, 0.2, ..., 0.5]
-            Significance level in algorithm. If a list or None is passed, the
-            pc_alpha level is optimized for every variable across the given
-            pc_alpha values using the score computed in
-            cond_ind_test.get_model_selection_criterion().
-        max_conds_dim : int or None
-            Maximum number of conditions to test. If None is passed, this number
-            is unrestricted.
-        max_combinations : int, default: 1
-            Maximum number of combinations of conditions of current cardinality
-            to test in PC1 step.
-
-        Returns
-        -------
-        all_parents : dict
-            Dictionary of form {0:[(0, -1), (3, -2), ...], 1:[], ...}
-            containing estimated parents.
-        """
-        if selected_links is not None:
-            raise ValueError(
-                "selected_links is DEPRECATED, use link_assumptions instead."
-            )
-
-        # Create an internal copy of pc_alpha
-        _int_pc_alpha = deepcopy(pc_alpha)
-        # Check if we are selecting an optimal alpha value
-        select_optimal_alpha = True
-        # Set the default values for pc_alpha
-        if _int_pc_alpha is None:
-            _int_pc_alpha = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5]
-        elif not isinstance(_int_pc_alpha, (list, tuple, np.ndarray)):
-            _int_pc_alpha = [_int_pc_alpha]
-            select_optimal_alpha = False
-        # Check the limits on tau_min
-        self._check_tau_limits(tau_min, tau_max)
-        tau_min = max(1, tau_min)
-        # Check that the maximum combinations variable is correct
-        if max_combinations <= 0:
-            raise ValueError("max_combinations must be > 0")
-        # Implement defaultdict for all pval_max, val_max, and iterations
-        pval_max = defaultdict(dict)
-        val_min = defaultdict(dict)
-        val_dict = defaultdict(dict)
-        iterations = defaultdict(dict)
-
-        if self.verbosity > 0:
-            self._print_pc_params(
-                link_assumptions,
-                tau_min,
-                tau_max,
-                _int_pc_alpha,
-                max_conds_dim,
-                max_combinations,
-            )
-
-        # Set the selected links
-        # _int_sel_links = self._set_sel_links(selected_links, tau_min, tau_max,
-        #                                      remove_contemp=True)
-        _int_link_assumptions = self._set_link_assumptions(
-            link_assumptions, tau_min, tau_max, remove_contemp=True
-        )
-
-        # Initialize all parents
-        all_parents = dict()
-        # Set the maximum condition dimension
-        max_conds_dim = self._set_max_condition_dim(max_conds_dim, tau_min, tau_max)
-
-        # Loop through the selected variables
-        for j in range(self.N):
-            # Print the status of this variable
-            if self.verbosity > 1:
-                print("\n## Variable %s" % self.var_names[j])
-                print("\nIterating through pc_alpha = %s:" % _int_pc_alpha)
-            # Initialize the scores for selecting the optimal alpha
-            score = np.zeros_like(_int_pc_alpha)
-            # Initialize the result
-            results = {}
-            for iscore, pc_alpha_here in enumerate(_int_pc_alpha):
-                # Print statement about the pc_alpha being tested
-                if self.verbosity > 1:
-                    print(
-                        "\n# pc_alpha = %s (%d/%d):"
-                        % (pc_alpha_here, iscore + 1, score.shape[0])
-                    )
-                # Get the results for this alpha value
-                results[pc_alpha_here] = self._run_pc_stable_single(
-                    j,
-                    link_assumptions_j=_int_link_assumptions[j],
-                    tau_min=tau_min,
-                    tau_max=tau_max,
-                    save_iterations=save_iterations,
-                    pc_alpha=pc_alpha_here,
-                    max_conds_dim=max_conds_dim,
-                    max_combinations=max_combinations,
-                )
-                # Figure out the best score if there is more than one pc_alpha
-                # value
-                if select_optimal_alpha:
-                    score[iscore] = self.cond_ind_test.get_model_selection_criterion(
-                        j, results[pc_alpha_here]["parents"], tau_max
-                    )
-            # Record the optimal alpha value
-            optimal_alpha = _int_pc_alpha[score.argmin()]
-            # Only print the selection results if there is more than one
-            # pc_alpha
-            if self.verbosity > 1 and select_optimal_alpha:
-                self._print_pc_sel_results(
-                    _int_pc_alpha, results, j, score, optimal_alpha
-                )
-            # Record the results for this variable
-            all_parents[j] = results[optimal_alpha]["parents"]
-            val_min[j] = results[optimal_alpha]["val_min"]
-            val_dict[j] = results[optimal_alpha]["val_dict"]
-            pval_max[j] = results[optimal_alpha]["pval_max"]
-            iterations[j] = results[optimal_alpha]["iterations"]
-            # Only save the optimal alpha if there is more than one pc_alpha
-            if select_optimal_alpha:
-                iterations[j]["optimal_pc_alpha"] = optimal_alpha
-        # Save the results in the current status of the algorithm
-        self.all_parents = all_parents
-        self.val_matrix = self._dict_to_matrix(val_dict, tau_max, self.N, default=0.0)
-        self.p_matrix = self._dict_to_matrix(pval_max, tau_max, self.N, default=1.0)
-        self.iterations = iterations
-        self.val_min = val_min
-        self.pval_max = pval_max
-        # Print the results
-        if self.verbosity > 0:
-            print("\n## Resulting lagged parent (super)sets:")
-            self._print_parents(all_parents, val_min, pval_max)
-        # Return the parents
-        return all_parents
 
     def run_pc_parallel_inner(
         self,
@@ -1180,10 +545,10 @@ class PCMCI(PCMCIbase):
                     # Figure out the best score if there is more than one pc_alpha
                     # value
                     if select_optimal_alpha:
-                        score[
-                            iscore
-                        ] = self.cond_ind_test.get_model_selection_criterion(
-                            j, results[pc_alpha_here]["parents"], tau_max
+                        score[iscore] = (
+                            self.cond_ind_test.get_model_selection_criterion(
+                                j, results[pc_alpha_here]["parents"], tau_max
+                            )
                         )
 
                 # Record the optimal alpha value
@@ -1222,64 +587,15 @@ class PCMCI(PCMCIbase):
         # Return the parents
         return all_parents
 
-    def _print_parents_single(self, j, parents, val_min, pval_max):
-        """Print current parents for variable j.
-
-        Parameters
-        ----------
-        j : int
-            Index of current variable.
-        parents : list
-            List of form [(0, -1), (3, -2), ...].
-        val_min : dict
-            Dictionary of form {(0, -1):float, ...} containing the minimum absolute
-            test statistic value of a link.
-        pval_max : dict
-            Dictionary of form {(0, -1):float, ...} containing the maximum
-            p-value of a link across different conditions.
-        """
-        if len(parents) < 20 or hasattr(self, "iterations"):
-            print(
-                "\n    Variable %s has %d link(s):" % (self.var_names[j], len(parents))
-            )
-            if hasattr(self, "iterations") and "optimal_pc_alpha" in list(
-                self.iterations[j]
-            ):
-                print("    [pc_alpha = %s]" % (self.iterations[j]["optimal_pc_alpha"]))
-            if val_min is None or pval_max is None:
-                for p in parents:
-                    print("        (%s % .d)" % (self.var_names[p[0]], p[1]))
-            else:
-                for p in parents:
-                    print(
-                        "        (%s % .d): max_pval = %.5f, |min_val| = % .3f"
-                        % (self.var_names[p[0]], p[1], pval_max[p], abs(val_min[p]))
-                    )
-        else:
-            print(
-                "\n    Variable %s has %d link(s):" % (self.var_names[j], len(parents))
-            )
-
-    def _print_parents(self, all_parents, val_min, pval_max):
-        """Print current parents.
-
-        Parameters
-        ----------
-        all_parents : dictionary
-            Dictionary of form {0:[(0, -1), (3, -2), ...], 1:[], ...} containing
-            the conditioning-parents estimated with PC algorithm.
-        val_min : dict
-            Dictionary of form {0:{(0, -1):float, ...}} containing the minimum
-            absolute test statistic value of a link.
-        pval_max : dict
-            Dictionary of form {0:{(0, -1):float, ...}} containing the maximum
-            p-value of a link across different conditions.
-        """
-        for j in [var for var in list(all_parents)]:
-            if val_min is None or pval_max is None:
-                self._print_parents_single(j, all_parents[j], None, None)
-            else:
-                self._print_parents_single(j, all_parents[j], val_min[j], pval_max[j])
+    def __init__(self, dataframe, pc, cond_ind_test, verbosity=0):
+        # Init base class
+        _PCMCIBase.__init__(
+            self,
+            dataframe=dataframe,
+            pc=pc,
+            cond_ind_test=cond_ind_test,
+            verbosity=verbosity,
+        )
 
     def _mci_condition_to_string(self, conds):
         """Convert the list of conditions into a string.
@@ -2483,7 +1799,14 @@ class PCMCI(PCMCIbase):
             )
 
         # Get the parents from run_pc_stable
-        all_parents = self.run_pc_stable(
+        (
+            self.all_parents,
+            self.val_matrix,
+            self.p_matrix,
+            self.iterations,
+            self.val_min,
+            self.pval_max,
+        ) = self.pc(
             link_assumptions=link_assumptions,
             tau_min=tau_min,
             tau_max=tau_max,
@@ -2498,225 +1821,12 @@ class PCMCI(PCMCIbase):
             link_assumptions=link_assumptions,
             tau_min=tau_min,
             tau_max=tau_max,
-            parents=all_parents,
+            parents=self.all_parents,
             max_conds_py=max_conds_py,
             max_conds_px=max_conds_px,
             alpha_level=alpha_level,
             fdr_method=fdr_method,
         )
-
-        # Store the parents in the pcmci member
-        self.all_parents = all_parents
-
-        # Print the information
-        # if self.verbosity > 0:
-        #     self.print_results(results)
-        # Return the dictionary
-        self.results = results
-        return results
-
-    def run_pcmci_parallel_inner(
-        self,
-        selected_links=None,
-        link_assumptions=None,
-        tau_min=0,
-        tau_max=1,
-        save_iterations=False,
-        pc_alpha=0.05,
-        max_conds_dim=None,
-        max_combinations=1,
-        max_conds_py=None,
-        max_conds_px=None,
-        alpha_level=0.05,
-        fdr_method="none",
-    ):
-        """Runs PCMCI time-lagged causal discovery for time series with an implementation of parallel-PC instead of PC-stable.
-
-        Wrapper around PC-algorithm function and MCI function.
-
-        Notes
-        -----
-
-        The PCMCI causal discovery method is comprehensively described in [
-        1]_, where also analytical and numerical results are presented. Here
-        we briefly summarize the method.
-
-        PCMCI estimates time-lagged causal links by a two-step procedure:
-
-        1.  Condition-selection: For each variable :math:`j`, estimate a
-            *superset* of parents :math:`\\tilde{\mathcal{P}}(X^j_t)` with the
-            iterative PC1 algorithm, implemented as ``run_pc_stable``. The
-            condition-selection step reduces the dimensionality and avoids
-            conditioning on irrelevant variables.
-
-        2.  *Momentary conditional independence* (MCI)
-
-        .. math:: X^i_{t-\\tau} \perp X^j_{t} | \\tilde{\\mathcal{P}}(
-                  X^j_t), \\tilde{\mathcal{P}}(X^i_{t-\\tau})
-
-        here implemented as ``run_mci``. This step estimates the p-values and
-        test statistic values for all links accounting for common drivers,
-        indirect links, and autocorrelation.
-
-        NOTE: MCI test statistic values define a particular measure of causal
-        strength depending on the test statistic used. For example, ParCorr()
-        results in normalized values between -1 and 1. However, if you are
-        interested in quantifying causal effects, i.e., the effect of
-        hypothetical interventions, you may better look at the causal effect
-        estimation functionality of Tigramite.
-
-        PCMCI can be flexibly combined with any kind of conditional
-        independence test statistic adapted to the kind of data (continuous
-        or discrete) and its assumed dependency types. These are available in
-        ``tigramite.independence_tests``.
-
-        The main free parameters of PCMCI (in addition to free parameters of
-        the conditional independence test statistic) are the maximum time
-        delay :math:`\\tau_{\\max}` (``tau_max``) and the significance
-        threshold in the condition-selection step :math:`\\alpha` (
-        ``pc_alpha``). The maximum time delay depends on the application and
-        should be chosen according to the maximum causal time lag expected in
-        the complex system. We recommend a rather large choice that includes
-        peaks in the ``get_lagged_dependencies`` function. :math:`\\alpha`
-        should not be seen as a significance test level in the
-        condition-selection step since the iterative hypothesis tests do not
-        allow for a precise assessment. :math:`\\alpha` rather takes the role
-        of a regularization parameter in model-selection techniques. If a
-        list of values is given or ``pc_alpha=None``, :math:`\\alpha` is
-        optimized using model selection criteria implemented in the respective
-        ``tigramite.independence_tests``.
-
-        Further optional parameters are discussed in [1]_.
-
-        Examples
-        --------
-        >>> import numpy
-        >>> from tigramite.pcmci import PCMCI
-        >>> from tigramite.independence_tests import ParCorr
-        >>> import tigramite.data_processing as pp
-        >>> from tigramite.toymodels import structural_causal_processes as toys
-        >>> numpy.random.seed(7)
-        >>> # Example process to play around with
-        >>> # Each key refers to a variable and the incoming links are supplied
-        >>> # as a list of format [((driver, -lag), coeff), ...]
-        >>> links_coeffs = {0: [((0, -1), 0.8)],
-                            1: [((1, -1), 0.8), ((0, -1), 0.5)],
-                            2: [((2, -1), 0.8), ((1, -2), -0.6)]}
-        >>> data, _ = toys.var_process(links_coeffs, T=1000)
-        >>> # Data must be array of shape (time, variables)
-        >>> print (data.shape)
-        (1000, 3)
-        >>> dataframe = pp.DataFrame(data)
-        >>> cond_ind_test = ParCorr()
-        >>> pcmci = PCMCI(dataframe=dataframe, cond_ind_test=cond_ind_test)
-        >>> results = pcmci.run_pcmci(tau_max=2, pc_alpha=None)
-        >>> pcmci.print_significant_links(p_matrix=results['p_matrix'],
-                                         val_matrix=results['val_matrix'],
-                                         alpha_level=0.05)
-        ## Significant parents at alpha = 0.05:
-
-            Variable 0 has 1 link(s):
-                (0 -1): pval = 0.00000 | val =  0.588
-
-            Variable 1 has 2 link(s):
-                (1 -1): pval = 0.00000 | val =  0.606
-                (0 -1): pval = 0.00000 | val =  0.447
-
-            Variable 2 has 2 link(s):
-                (2 -1): pval = 0.00000 | val =  0.618
-                (1 -2): pval = 0.00000 | val = -0.499
-
-
-        Parameters
-        ----------
-        selected_links : dict or None
-            Deprecated, replaced by link_assumptions
-        link_assumptions : dict
-            Dictionary of form {j:{(i, -tau): link_type, ...}, ...} specifying
-            assumptions about links. This initializes the graph with entries
-            graph[i,j,tau] = link_type. For example, graph[i,j,0] = '-->'
-            implies that a directed link from i to j at lag 0 must exist.
-            Valid link types are 'o-o', '-->', '<--'. In addition, the middle
-            mark can be '?' instead of '-'. Then '-?>' implies that this link
-            may not exist, but if it exists, its orientation is '-->'. Link
-            assumptions need to be consistent, i.e., graph[i,j,0] = '-->'
-            requires graph[j,i,0] = '<--' and acyclicity must hold. If a link
-            does not appear in the dictionary, it is assumed absent. That is,
-            if link_assumptions is not None, then all links have to be specified
-            or the links are assumed absent.
-        tau_min : int, optional (default: 0)
-            Minimum time lag to test. Note that zero-lags are undirected.
-        tau_max : int, optional (default: 1)
-            Maximum time lag. Must be larger or equal to tau_min.
-        save_iterations : bool, optional (default: False)
-            Whether to save iteration step results such as conditions used.
-        pc_alpha : float, optional (default: 0.05)
-            Significance level in algorithm.
-        max_conds_dim : int, optional (default: None)
-            Maximum number of conditions to test. If None is passed, this number
-            is unrestricted.
-        max_combinations : int, optional (default: 1)
-            Maximum number of combinations of conditions of current cardinality
-            to test in PC1 step.
-        max_conds_py : int, optional (default: None)
-            Maximum number of conditions of Y to use. If None is passed, this
-            number is unrestricted.
-        max_conds_px : int, optional (default: None)
-            Maximum number of conditions of Z to use. If None is passed, this
-            number is unrestricted.
-        alpha_level : float, optional (default: 0.05)
-            Significance level at which the p_matrix is thresholded to
-            get graph.
-        fdr_method : str, optional (default: 'fdr_bh')
-            Correction method, currently implemented is Benjamini-Hochberg
-            False Discovery Rate method.
-
-        Returns
-        -------
-        graph : array of shape [N, N, tau_max+1]
-            Causal graph, see description above for interpretation.
-        val_matrix : array of shape [N, N, tau_max+1]
-            Estimated matrix of test statistic values.
-        p_matrix : array of shape [N, N, tau_max+1]
-            Estimated matrix of p-values, optionally adjusted if fdr_method is
-            not 'none'.
-        conf_matrix : array of shape [N, N, tau_max+1,2]
-            Estimated matrix of confidence intervals of test statistic values.
-            Only computed if set in cond_ind_test, where also the percentiles
-            are set.
-
-        """
-
-        if selected_links is not None:
-            raise ValueError(
-                "selected_links is DEPRECATED, use link_assumptions instead."
-            )
-
-        # Get the parents from run_pc_stable
-        all_parents = self.run_pc_parallel_inner(
-            link_assumptions=link_assumptions,
-            tau_min=tau_min,
-            tau_max=tau_max,
-            save_iterations=save_iterations,
-            pc_alpha=pc_alpha,
-            max_conds_dim=max_conds_dim,
-            max_combinations=max_combinations,
-        )
-
-        # Get the results from run_mci, using the parents as the input
-        results = self.run_mci(
-            link_assumptions=link_assumptions,
-            tau_min=tau_min,
-            tau_max=tau_max,
-            parents=all_parents,
-            max_conds_py=max_conds_py,
-            max_conds_px=max_conds_px,
-            alpha_level=alpha_level,
-            fdr_method=fdr_method,
-        )
-
-        # Store the parents in the pcmci member
-        self.all_parents = all_parents
 
         # Print the information
         # if self.verbosity > 0:
@@ -2962,7 +2072,14 @@ class PCMCI(PCMCIbase):
         #
         # Phase 1: Get a superset of lagged parents from run_pc_stable
         #
-        lagged_parents = self.run_pc_stable(
+        (
+            self.all_parents,
+            self.val_matrix,
+            self.p_matrix,
+            self.iterations,
+            self.val_min,
+            self.pval_max,
+        ) = self.pc(
             link_assumptions=link_assumptions,
             tau_min=tau_min,
             tau_max=tau_max,
@@ -2971,6 +2088,7 @@ class PCMCI(PCMCIbase):
             max_combinations=max_combinations,
         )
         # Extract p- and val-matrix
+        lagged_parents = self.all_parents
         p_matrix = self.p_matrix
         val_matrix = self.val_matrix
 
@@ -4875,6 +3993,7 @@ class PCMCI(PCMCIbase):
 
 
 if __name__ == "__main__":
+    from tigramite.pc.pcstable import PCStable
     from tigramite.independence_tests.parcorr import ParCorr
     from tigramite.independence_tests.cmiknn import CMIknn
 
@@ -4935,7 +4054,9 @@ if __name__ == "__main__":
 
     # for j in link_assumptions:
     #     print(link_assumptions[j])
-    pcmci_parcorr = PCMCI(dataframe=dataframe, cond_ind_test=ci_test, verbosity=1)
+    pcmci_parcorr = PCMCI(
+        dataframe=dataframe, pc=PCStable, cond_ind_test=ci_test, verbosity=1
+    )
     results = pcmci_parcorr.run_pcmciplus(
         tau_max=tau_max,
         pc_alpha=[0.001, 0.01, 0.05, 0.8],

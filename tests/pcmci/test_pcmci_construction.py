@@ -1,6 +1,7 @@
 """
 Tests for pcmci.py, including tests for run_pc_stable, run_mci, and run_pcmci.
 """
+
 from __future__ import print_function
 from collections import defaultdict
 from distutils.version import LooseVersion
@@ -8,48 +9,31 @@ import numpy as np
 import pytest
 from scipy.special import comb
 
-from tigramite.pcmci import PCMCI
+from tigramite.pcmci.pcmci import PCMCI
 from tigramite.independence_tests.parcorr import ParCorr
 import tigramite.data_processing as pp
 from tigramite.toymodels import structural_causal_processes as toys
 
-from test_pcmci_calculations import a_chain
+from tests import VERBOSITY, _get_parent_graph, a_chain
+from tests.pcmci.test_pcmci_calculations import a_pc_impl
 
 # Pylint settings
 # pylint: disable=redefined-outer-name
 
-# Define the verbosity at the global scope
-VERBOSITY = 1
-
-# CONVENIENCE FUNCTIONS ########################################################
-def _get_parent_graph(parents_neighbors_coeffs, exclude=None):
-    """
-    Iterates through the input parent-neighghbour coefficient dictionary to
-    return only parent relations (i.e. where tau != 0)
-    """
-    graph = defaultdict(list)
-    for j, i, tau, _ in toys._iter_coeffs(parents_neighbors_coeffs):
-        if tau != 0 and (i, tau) != exclude:
-            graph[j].append((i, tau))
-    return dict(graph)
-
-def _select_links(link_ids, true_parents):
-    """
-    Select links given by  from the true parents dictionary
-    """
-    if link_ids is None:
-        return None
-    return {par : {true_parents[par][link]:'-->'} for par in true_parents \
-                                            for link in link_ids}
 
 # TEST LINK GENERATION #########################################################
 N_NODES = 4
-@pytest.fixture(params=[
-    # Generate a test data sample
-    # Parameterize the sample by setting the autocorrelation value, coefficient
-    # value, total time length, and random seed to different numbers
-    # links_coeffs,     time, seed_val
-    (a_chain(0.5, 0.6, length=N_NODES), 1000, 42)])
+
+
+@pytest.fixture(
+    params=[
+        # Generate a test data sample
+        # Parameterize the sample by setting the autocorrelation value, coefficient
+        # value, total time length, and random seed to different numbers
+        # links_coeffs,     time, seed_val
+        (a_chain(0.5, 0.6, length=N_NODES), 1000, 42)
+    ]
+)
 def a_sample(request):
     # Set the parameters
     links_coeffs, time, seed_val = request.param
@@ -61,19 +45,24 @@ def a_sample(request):
     true_parents = _get_parent_graph(links_coeffs)
     return pp.DataFrame(data), true_parents
 
+
 # PCMCI CONSTRUCTION ###########################################################
 @pytest.fixture()
-    # Fixture to build and return a parameterized PCMCI.  Different selected
-    # variables can be defined here.
-def a_pcmci(a_sample, request):
+# Fixture to build and return a parameterized PCMCI.  Different selected
+# variables can be defined here.
+def a_pcmci(a_sample, a_pc_impl, request):
     # Unpack the test data and true parent graph
     dataframe, true_parents = a_sample
     # Build the PCMCI instance
-    pcmci = PCMCI(dataframe=dataframe,
-                  cond_ind_test=ParCorr(verbosity=VERBOSITY),
-                  verbosity=VERBOSITY)
+    pcmci = PCMCI(
+        dataframe=dataframe,
+        pc=a_pc_impl,
+        cond_ind_test=ParCorr(verbosity=VERBOSITY),
+        verbosity=VERBOSITY,
+    )
     # Return the constructed PCMCI, expected results, and common parameters
     return pcmci, true_parents
+
 
 # TEST VARIABLE SELECTION ######################################################
 def get_select_vars(some_vars):
@@ -87,12 +76,17 @@ def get_select_vars(some_vars):
 # TEST LINK SELECTION ##########################################################
 TAU_MIN = 1
 TAU_MAX = 3
+
+
 def get_expected_links(a_range, b_range, t_range):
     """
     Helper function to generate the expected links
     """
-    return {a_var : {(b_var, -lag):'-?>' for b_var in b_range for lag in t_range}
-            for a_var in a_range}
+    return {
+        a_var: {(b_var, -lag): "-?>" for b_var in b_range for lag in t_range}
+        for a_var in a_range
+    }
+
 
 def test_select_links_default(a_pcmci):
     """
@@ -102,22 +96,29 @@ def test_select_links_default(a_pcmci):
     pcmci, _ = a_pcmci
     # Test the default selected variables are correct
     sel_links = pcmci._set_link_assumptions(None, TAU_MIN, TAU_MAX)
-    err_msg = "Default option for _set_link_assumptions should return all possible "+\
-              "combinations"
-    good_links = get_expected_links(range(pcmci.N),
-                                    range(pcmci.N),
-                                    range(TAU_MIN, TAU_MAX + 1))
+    err_msg = (
+        "Default option for _set_link_assumptions should return all possible "
+        + "combinations"
+    )
+    good_links = get_expected_links(
+        range(pcmci.N), range(pcmci.N), range(TAU_MIN, TAU_MAX + 1)
+    )
     np.testing.assert_equal(sel_links, good_links, err_msg=err_msg)
 
+
 # TEST ITERATORS ###############################################################
-@pytest.fixture(params=[
-    # Store some parameters for setting maximum conditions
-    #max_cond_dim, tau_min, tau_max
-    (None,         1,       3),
-    (10,           1,       3),
-    (1,            2,       4)])
+@pytest.fixture(
+    params=[
+        # Store some parameters for setting maximum conditions
+        # max_cond_dim, tau_min, tau_max
+        (None, 1, 3),
+        (10, 1, 3),
+        (1, 2, 4),
+    ]
+)
 def a_iter_cond_param(request):
     return request.param
+
 
 def test_condition_iterator(a_pcmci, a_iter_cond_param):
     """
@@ -142,8 +143,8 @@ def test_condition_iterator(a_pcmci, a_iter_cond_param):
         # Parents for this node
         parents = sel_links[j]
         # Loop over all possible dimentionality of conditions
-        for cond_dim in range(max_cond_dim+1):
-            # Skip the case where (cond_dim == num_parents + 1), as is done in 
+        for cond_dim in range(max_cond_dim + 1):
+            # Skip the case where (cond_dim == num_parents + 1), as is done in
             # the main loop of the code
             if cond_dim > len(parents) - 1:
                 continue
@@ -160,21 +161,24 @@ def test_condition_iterator(a_pcmci, a_iter_cond_param):
                     assert par not in cond, "Parent should not be in condition"
                     # Keep this condition in list of conditions
                     par_conds.append([par] + cond)
-                    assert len(cond) == cond_dim,\
-                        "Number of conditions should match requested dimension"
+                    assert (
+                        len(cond) == cond_dim
+                    ), "Number of conditions should match requested dimension"
                 # Check that at least one condition is found
-                assert len(par_conds) != 0,\
-                    "Expected number of conditions for condition "+\
-                    " dimension {}".format(cond_dim)+\
-                    " and total n_nodes {}".format(len(parents)-1)+\
-                    " is zero!"
+                assert len(par_conds) != 0, (
+                    "Expected number of conditions for condition "
+                    + " dimension {}".format(cond_dim)
+                    + " and total n_nodes {}".format(len(parents) - 1)
+                    + " is zero!"
+                )
                 # Check that this iterations has the expected number of
                 # conditions
-                assert len(par_conds) == expected_n_conds,\
-                    "Expected number of conditions for condition "+\
-                    " dimension {}".format(cond_dim)+\
-                    " and total n_nodes {}".format(len(parents)-1)+\
-                    " does not match"
+                assert len(par_conds) == expected_n_conds, (
+                    "Expected number of conditions for condition "
+                    + " dimension {}".format(cond_dim)
+                    + " and total n_nodes {}".format(len(parents) - 1)
+                    + " does not match"
+                )
                 # Record the total number found
                 total_n_conds += len(par_conds)
                 par_conds = np.array(par_conds)
@@ -183,20 +187,26 @@ def test_condition_iterator(a_pcmci, a_iter_cond_param):
                 if LooseVersion(np.version.version) >= LooseVersion("1.13"):
                     assert np.unique(par_conds, axis=0).shape == par_conds.shape
         # Check that the right number of conditions are found
-        assert total_n_conds == expected_total_n_conds, \
-            "Expected number of combinations found"
+        assert (
+            total_n_conds == expected_total_n_conds
+        ), "Expected number of combinations found"
 
-@pytest.fixture(params=[
-    # Store some parameters for iterating over conditions during the MCI
-    # algorithm
-    #max_cond_dim_X, max_cond_dim_Y, tau_min, tau_max
-    (None,           None,           0,       3), # Default
-    (1,              None,           0,       3), # Maximum conds on X
-    (None,           1,              0,       3), # Maximum conds on Y
-    (None,           None,           1,       3), # Non-trivial tau-min
-    (None,           None,           0,       1)])# Non-trivial tau-max
+
+@pytest.fixture(
+    params=[
+        # Store some parameters for iterating over conditions during the MCI
+        # algorithm
+        # max_cond_dim_X, max_cond_dim_Y, tau_min, tau_max
+        (None, None, 0, 3),  # Default
+        (1, None, 0, 3),  # Maximum conds on X
+        (None, 1, 0, 3),  # Maximum conds on Y
+        (None, None, 1, 3),  # Non-trivial tau-min
+        (None, None, 0, 1),
+    ]
+)  # Non-trivial tau-max
 def a_iter_indep_cond_param(request):
     return request.param
+
 
 def test_iter_indep_conds(a_pcmci, a_iter_indep_cond_param):
     """
@@ -225,29 +235,28 @@ def test_iter_indep_conds(a_pcmci, a_iter_indep_cond_param):
     # (i, tau) == (j, 0) entries from expected testing
     for j, node_list in _int_set_link_assumptions.items():
         for i, tau in node_list:
-            if not (i == j and  tau == 0):
+            if not (i == j and tau == 0):
                 expect_links += 1
-    ## TODO try to check content of Z to ensure it contains parent of y, parents 
+    ## TODO try to check content of Z to ensure it contains parent of y, parents
     ## of x lagged.
     # Iterate over all the returned conditions
-    for j, i, tau, Z in pcmci._iter_indep_conds(_int_parents,
-                                                _int_set_link_assumptions,
-                                                max_conds_py,
-                                                max_conds_px):
+    for j, i, tau, Z in pcmci._iter_indep_conds(
+        _int_parents, _int_set_link_assumptions, max_conds_py, max_conds_px
+    ):
         # Incriment the link count
         n_links += 1
         # Ensure the parent link is not in the conditions
-        assert (i, tau) not in Z,\
-            "Parent node must not be in the conditions"
+        assert (i, tau) not in Z, "Parent node must not be in the conditions"
         # Check that the conditions length are shorter than the maximum
         # condition length for X and Y
         total_max_conds = max_conds_px + max_conds_py
-        assert len(Z) <= total_max_conds,\
-            "The number of conditions must be less than the sum of the"+\
-            " maximum number of conditions on X and Y"
+        assert len(Z) <= total_max_conds, (
+            "The number of conditions must be less than the sum of the"
+            + " maximum number of conditions on X and Y"
+        )
     # Get the total number of tested links
-    assert expect_links == n_links,\
-        "Recoved the expected number of links to test"
+    assert expect_links == n_links, "Recoved the expected number of links to test"
+
 
 # TEST UTILITY FUNCTIONS #######################################################
 def test_sort_parents(a_pcmci):
@@ -274,22 +283,28 @@ def test_sort_parents(a_pcmci):
     # Sort them
     sorted_parents = pcmci._sort_parents(parent_vals)
     # Ensure the sorting works as expected
-    assert sorted_parents == orig_parents[::-1],\
-        "Parents must be sorted by abolute value of the test metric"
+    assert (
+        sorted_parents == orig_parents[::-1]
+    ), "Parents must be sorted by abolute value of the test metric"
 
-@pytest.fixture(params=[
-    # Store some parameters for iterating over conditions during the MCI
-    # algorithm
-    #tau_min, tau_max, should_pass
-    (0,       3,       True),  # 0 = tau_min < tau_max, should pass
-    (2,       3,       True),  # 0 < tau_min < tau_max, should pass
-    (3,       3,       True),  # 0 < tau_min = tau_max, should pass
-    (3,       2,       False), # 0 < tau_max < tau_min, should fail
-    (-1,      3,       False), # tau_min < 0 < tau_min, should fail
-    (0,      -2,       False), # tau_max < 0 < tau_min, should fail
-    (-1,     -2,       False)])# tau_min < tau_max < 0, should fail
+
+@pytest.fixture(
+    params=[
+        # Store some parameters for iterating over conditions during the MCI
+        # algorithm
+        # tau_min, tau_max, should_pass
+        (0, 3, True),  # 0 = tau_min < tau_max, should pass
+        (2, 3, True),  # 0 < tau_min < tau_max, should pass
+        (3, 3, True),  # 0 < tau_min = tau_max, should pass
+        (3, 2, False),  # 0 < tau_max < tau_min, should fail
+        (-1, 3, False),  # tau_min < 0 < tau_min, should fail
+        (0, -2, False),  # tau_max < 0 < tau_min, should fail
+        (-1, -2, False),
+    ]
+)  # tau_min < tau_max < 0, should fail
 def a_tau_values(request):
     return request.param
+
 
 def test_check_tau_limits(a_pcmci, a_tau_values):
     """
@@ -309,21 +324,26 @@ def test_check_tau_limits(a_pcmci, a_tau_values):
             pcmci._check_tau_limits(tau_min, tau_max)
         # Ensure no exception is raised
         except:
-            pytest.fail("Good tau limits failed incorrectly:"+err_msg)
+            pytest.fail("Good tau limits failed incorrectly:" + err_msg)
     # If it should fail, make sure it does
     else:
         with pytest.raises(ValueError):
             pcmci._check_tau_limits(tau_min, tau_max)
-            pytest.fail("Bad tau limits should fail"+err_msg)
+            pytest.fail("Bad tau limits should fail" + err_msg)
 
-@pytest.fixture(params=[
-    # Store some parameters for correcting the pvalues
-    #fdr_method, excl,  slice_n,        slice_t,     message
-    ('fdr_bh',   False, range(N_NODES), 0,           "default"),
-    ('fdr_bh',   True,  slice(None),    0,           "exclude contemporaneous"),
-    ('none',     True,  slice(None),    slice(None), "none")])
+
+@pytest.fixture(
+    params=[
+        # Store some parameters for correcting the pvalues
+        # fdr_method, excl,  slice_n,        slice_t,     message
+        ("fdr_bh", False, range(N_NODES), 0, "default"),
+        ("fdr_bh", True, slice(None), 0, "exclude contemporaneous"),
+        ("none", True, slice(None), slice(None), "none"),
+    ]
+)
 def a_correct_pvals_params(request):
     return request.param
+
 
 def test_corrected_pvalues(a_pcmci, a_correct_pvals_params):
     """
@@ -337,19 +357,22 @@ def test_corrected_pvalues(a_pcmci, a_correct_pvals_params):
     # Unpack the parameters
     fdr_method, excl, slice_n, slice_t, message = a_correct_pvals_params
     # Create the p-values
-    pvals = np.linspace(0, 1, num=N_NODES*N_NODES*(TAU_MAX+1))
-    pvals = pvals.reshape(N_NODES, N_NODES, TAU_MAX+1)
+    pvals = np.linspace(0, 1, num=N_NODES * N_NODES * (TAU_MAX + 1))
+    pvals = pvals.reshape(N_NODES, N_NODES, TAU_MAX + 1)
     # Create the corrected p-values
-    qvals = pcmci.get_corrected_pvalues(pvals,
-                                        fdr_method=fdr_method,
-                                        exclude_contemporaneous=excl)
-    err_msg = "get_corrected_pvalues failed on "+message+" mode"
-    np.testing.assert_allclose(pvals[slice_n, slice_n, slice_t],
-                               qvals[slice_n, slice_n, slice_t],
-                               rtol=1e-10,
-                               atol=1e-10,
-                               verbose=True,
-                               err_msg=err_msg)
+    qvals = pcmci.get_corrected_pvalues(
+        pvals, fdr_method=fdr_method, exclude_contemporaneous=excl
+    )
+    err_msg = "get_corrected_pvalues failed on " + message + " mode"
+    np.testing.assert_allclose(
+        pvals[slice_n, slice_n, slice_t],
+        qvals[slice_n, slice_n, slice_t],
+        rtol=1e-10,
+        atol=1e-10,
+        verbose=True,
+        err_msg=err_msg,
+    )
+
 
 def test_sig_parents(a_pcmci):
     """
@@ -360,14 +383,15 @@ def test_sig_parents(a_pcmci):
     # Define the dimensionality
     dim = N_NODES
     # Build a p_matrix for 10 x 10 x 10
-    p_matrix = np.arange(dim*dim*dim).reshape(dim, dim, dim) + 1
+    p_matrix = np.arange(dim * dim * dim).reshape(dim, dim, dim) + 1
     # Build a val matrix as the negative version of this matrix
     val_matrix = -p_matrix
     # Define the alpha value
-    alpha = dim*dim*dim/2
+    alpha = dim * dim * dim / 2
     # Get the significant parents
-    graph = pcmci.get_graph_from_pmatrix(p_matrix=p_matrix, tau_min=0, tau_max=dim-1,
-                                                   alpha_level=alpha)
+    graph = pcmci.get_graph_from_pmatrix(
+        p_matrix=p_matrix, tau_min=0, tau_max=dim - 1, alpha_level=alpha
+    )
     # # Ensure the link matrix has the correct sum
     # link_matrix = graph != ""
     # num_links = np.count_nonzero(link_matrix)
@@ -383,24 +407,27 @@ def test_sig_parents(a_pcmci):
     # parents
     parents_dict = pcmci.return_parents_dict(graph=graph, val_matrix=val_matrix)
     all_links = [lnk for links in parents_dict.values() for lnk in links]
-    assert len(all_links) == (dim*dim*(dim - 1))/2.,\
-            "The correct number of links are returned in the dictionary of"+\
-            " parents"
+    assert len(all_links) == (dim * dim * (dim - 1)) / 2.0, (
+        "The correct number of links are returned in the dictionary of" + " parents"
+    )
     # Ensure the correct links are returned:
     # Expect j to cycle through [0, dim]
     expect_j = set(range(dim))
     # Expect i to cycle through [0, dim/2]
-    expect_i = set(range((int)(dim/2)))
+    expect_i = set(range((int)(dim / 2)))
     # Expect tau to cycle through [-3, -1]
     expect_t = set(range(-dim + 1, 0))
     for key, links in parents_dict.items():
         # Ensure the returned keys are correct
-        assert key in expect_j, "Incorrect node/key found in returned parent"+\
-                " dictionary"
-        for (i, tau) in links:
+        assert key in expect_j, (
+            "Incorrect node/key found in returned parent" + " dictionary"
+        )
+        for i, tau in links:
             # Ensure the returned node values are correct
-            assert i in expect_i, "Incorrect parent found in returned parent"+\
-                    " dictionary"
+            assert i in expect_i, (
+                "Incorrect parent found in returned parent" + " dictionary"
+            )
             # Ensure the returned tau values are correct
-            assert tau in expect_t, "Incorrect tau found in returned parent"+\
-                    " dictionary"
+            assert tau in expect_t, (
+                "Incorrect tau found in returned parent" + " dictionary"
+            )
