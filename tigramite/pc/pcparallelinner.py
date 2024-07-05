@@ -8,7 +8,7 @@ import numpy as np
 from multiprocessing import Pool
 
 
-def run_cond_ind_test(
+def _run_cond_ind_test(
     cond_ind_test,
     X,
     Y,
@@ -199,7 +199,7 @@ class PCParallelInner(_PCBase):
             result = defaultdict(list)
             for (parent, *_state_rest), _result in zip(
                 state,
-                pool.starmap(run_cond_ind_test, args),
+                pool.starmap(_run_cond_ind_test, args),
             ):
                 result[parent].append((*_state_rest, *_result))
 

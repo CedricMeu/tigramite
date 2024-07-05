@@ -7,17 +7,53 @@ from tigramite import _create_nested_dictionary, _nested_to_normal
 import numpy as np
 
 
+def _run_single_prepared(
+    pc_impl,
+    j,
+    _int_link_assumptions,
+    tau_min,
+    tau_max,
+    save_iterations,
+    pc_alpha_here,
+    max_conds_dim,
+    max_combinations,
+    select_optimal_alpha,
+):
+
+    # Get the results for this alpha value
+    result = pc_impl._run_single(
+        j,
+        _int_link_assumptions,
+        tau_min,
+        tau_max,
+        save_iterations,
+        pc_alpha_here,
+        max_conds_dim,
+        max_combinations,
+    )
+
+    # Figure out the best score if there is more than one pc_alpha
+    # value
+    score = None
+    if select_optimal_alpha:
+        score = pc_impl.cond_ind_test.get_model_selection_criterion(
+            j, result["parents"], tau_max
+        )
+
+    return result, score
+
+
 class PCParallelOuter(_PCBase):
-    def __run_single(
+    def _run_single(
         self,
         j,
-        link_assumptions_j=None,
-        tau_min=1,
-        tau_max=1,
-        save_iterations=False,
-        pc_alpha=0.2,
-        max_conds_dim=None,
-        max_combinations=1,
+        link_assumptions_j,
+        tau_min,
+        tau_max,
+        save_iterations,
+        pc_alpha,
+        max_conds_dim,
+        max_combinations,
     ):
         """Lagged PC algorithm for estimating lagged parents of single variable.
 
@@ -317,7 +353,11 @@ class PCParallelOuter(_PCBase):
         max_conds_dim = self._set_max_condition_dim(max_conds_dim, tau_min, tau_max)
 
         with Pool() as pool:
-            results = defaultdict(dict)
+            state = []
+            args = []
+
+            # Initialize the scores for selecting the optimal alpha
+            scores = defaultdict(lambda: np.zeros_like(_int_pc_alpha))
 
             # Loop through the selected variables
             for j in range(self.N):
@@ -326,38 +366,43 @@ class PCParallelOuter(_PCBase):
                     print("\n## Variable %s" % self.var_names[j])
                     print("\nIterating through pc_alpha = %s:" % _int_pc_alpha)
 
-                # Initialize the scores for selecting the optimal alpha
-                score = np.zeros_like(_int_pc_alpha)
-
                 # Initialize the result
                 for iscore, pc_alpha_here in enumerate(_int_pc_alpha):
                     # Print statement about the pc_alpha being tested
                     if self.verbosity > 1:
                         print(
                             "\n# pc_alpha = %s (%d/%d):"
-                            % (pc_alpha_here, iscore + 1, score.shape[0])
+                            % (pc_alpha_here, iscore + 1, scores[j].shape[0])
                         )
 
-                    # Get the results for this alpha value
-                    results[j][pc_alpha_here] = self.__run_single(
-                        j,
-                        link_assumptions_j=_int_link_assumptions[j],
-                        tau_min=tau_min,
-                        tau_max=tau_max,
-                        save_iterations=save_iterations,
-                        pc_alpha=pc_alpha_here,
-                        max_conds_dim=max_conds_dim,
-                        max_combinations=max_combinations,
+                    state.append((j, iscore, pc_alpha_here))
+
+                    args.append(
+                        (
+                            self,
+                            j,
+                            _int_link_assumptions[j],
+                            tau_min,
+                            tau_max,
+                            save_iterations,
+                            pc_alpha_here,
+                            max_conds_dim,
+                            max_combinations,
+                            select_optimal_alpha,
+                        )
                     )
 
-                    # Figure out the best score if there is more than one pc_alpha
-                    # value
-                    if select_optimal_alpha:
-                        score[iscore] = (
-                            self.cond_ind_test.get_model_selection_criterion(
-                                j, results[j][pc_alpha_here]["parents"], tau_max
-                            )
-                        )
+            results = defaultdict(dict)
+            for (j, iscore, pc_alpha_here), (result, score) in zip(
+                state, pool.starmap(_run_single_prepared, args)
+            ):
+                results[j][pc_alpha_here] = result
+                if score is not None:
+                    scores[j][iscore] = score
+
+            for j, *_ in state:
+                result = results[j]
+                score = scores[j]
 
                 # Record the optimal alpha value
                 optimal_alpha = _int_pc_alpha[score.argmin()]
@@ -366,15 +411,15 @@ class PCParallelOuter(_PCBase):
                 # pc_alpha
                 if self.verbosity > 1 and select_optimal_alpha:
                     self._print_pc_sel_results(
-                        _int_pc_alpha, results[j], j, score, optimal_alpha
+                        _int_pc_alpha, result, j, score, optimal_alpha
                     )
 
                 # Record the results for this variable
-                all_parents[j] = results[j][optimal_alpha]["parents"]
-                val_min[j] = results[j][optimal_alpha]["val_min"]
-                val_dict[j] = results[j][optimal_alpha]["val_dict"]
-                pval_max[j] = results[j][optimal_alpha]["pval_max"]
-                iterations[j] = results[j][optimal_alpha]["iterations"]
+                all_parents[j] = result[optimal_alpha]["parents"]
+                val_min[j] = result[optimal_alpha]["val_min"]
+                val_dict[j] = result[optimal_alpha]["val_dict"]
+                pval_max[j] = result[optimal_alpha]["pval_max"]
+                iterations[j] = result[optimal_alpha]["iterations"]
 
                 # Only save the optimal alpha if there is more than one pc_alpha
                 if select_optimal_alpha:
