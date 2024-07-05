@@ -1,12 +1,13 @@
 from collections import defaultdict
 from copy import deepcopy
+from multiprocessing import Pool
 from typing import Dict, List, Tuple
 from tigramite.pc import _PCBase
 from tigramite import _create_nested_dictionary, _nested_to_normal
 import numpy as np
 
 
-class PCStable(_PCBase):
+class PCParallelOuter(_PCBase):
     def __run_single(
         self,
         j,
@@ -315,74 +316,78 @@ class PCStable(_PCBase):
         # Set the maximum condition dimension
         max_conds_dim = self._set_max_condition_dim(max_conds_dim, tau_min, tau_max)
 
-        # Loop through the selected variables
-        for j in range(self.N):
-            # Print the status of this variable
-            if self.verbosity > 1:
-                print("\n## Variable %s" % self.var_names[j])
-                print("\nIterating through pc_alpha = %s:" % _int_pc_alpha)
+        with Pool() as pool:
+            results = defaultdict(dict)
 
-            # Initialize the scores for selecting the optimal alpha
-            score = np.zeros_like(_int_pc_alpha)
-
-            # Initialize the result
-            results = {}
-            for iscore, pc_alpha_here in enumerate(_int_pc_alpha):
-                # Print statement about the pc_alpha being tested
+            # Loop through the selected variables
+            for j in range(self.N):
+                # Print the status of this variable
                 if self.verbosity > 1:
-                    print(
-                        "\n# pc_alpha = %s (%d/%d):"
-                        % (pc_alpha_here, iscore + 1, score.shape[0])
+                    print("\n## Variable %s" % self.var_names[j])
+                    print("\nIterating through pc_alpha = %s:" % _int_pc_alpha)
+
+                # Initialize the scores for selecting the optimal alpha
+                score = np.zeros_like(_int_pc_alpha)
+
+                # Initialize the result
+                for iscore, pc_alpha_here in enumerate(_int_pc_alpha):
+                    # Print statement about the pc_alpha being tested
+                    if self.verbosity > 1:
+                        print(
+                            "\n# pc_alpha = %s (%d/%d):"
+                            % (pc_alpha_here, iscore + 1, score.shape[0])
+                        )
+
+                    # Get the results for this alpha value
+                    results[j][pc_alpha_here] = self.__run_single(
+                        j,
+                        link_assumptions_j=_int_link_assumptions[j],
+                        tau_min=tau_min,
+                        tau_max=tau_max,
+                        save_iterations=save_iterations,
+                        pc_alpha=pc_alpha_here,
+                        max_conds_dim=max_conds_dim,
+                        max_combinations=max_combinations,
                     )
 
-                # Get the results for this alpha value
-                results[pc_alpha_here] = self.__run_single(
-                    j,
-                    link_assumptions_j=_int_link_assumptions[j],
-                    tau_min=tau_min,
-                    tau_max=tau_max,
-                    save_iterations=save_iterations,
-                    pc_alpha=pc_alpha_here,
-                    max_conds_dim=max_conds_dim,
-                    max_combinations=max_combinations,
-                )
+                    # Figure out the best score if there is more than one pc_alpha
+                    # value
+                    if select_optimal_alpha:
+                        score[iscore] = (
+                            self.cond_ind_test.get_model_selection_criterion(
+                                j, results[j][pc_alpha_here]["parents"], tau_max
+                            )
+                        )
 
-                # Figure out the best score if there is more than one pc_alpha
-                # value
+                # Record the optimal alpha value
+                optimal_alpha = _int_pc_alpha[score.argmin()]
+
+                # Only print the selection results if there is more than one
+                # pc_alpha
+                if self.verbosity > 1 and select_optimal_alpha:
+                    self._print_pc_sel_results(
+                        _int_pc_alpha, results[j], j, score, optimal_alpha
+                    )
+
+                # Record the results for this variable
+                all_parents[j] = results[j][optimal_alpha]["parents"]
+                val_min[j] = results[j][optimal_alpha]["val_min"]
+                val_dict[j] = results[j][optimal_alpha]["val_dict"]
+                pval_max[j] = results[j][optimal_alpha]["pval_max"]
+                iterations[j] = results[j][optimal_alpha]["iterations"]
+
+                # Only save the optimal alpha if there is more than one pc_alpha
                 if select_optimal_alpha:
-                    score[iscore] = self.cond_ind_test.get_model_selection_criterion(
-                        j, results[pc_alpha_here]["parents"], tau_max
-                    )
+                    iterations[j]["optimal_pc_alpha"] = optimal_alpha
 
-            # Record the optimal alpha value
-            optimal_alpha = _int_pc_alpha[score.argmin()]
+            # Save the results in the current status of the algorithm
+            val_matrix = self._dict_to_matrix(val_dict, tau_max, self.N, default=0.0)
+            p_matrix = self._dict_to_matrix(pval_max, tau_max, self.N, default=1.0)
 
-            # Only print the selection results if there is more than one
-            # pc_alpha
-            if self.verbosity > 1 and select_optimal_alpha:
-                self._print_pc_sel_results(
-                    _int_pc_alpha, results, j, score, optimal_alpha
-                )
+            # Print the results
+            if self.verbosity > 0:
+                print("\n## Resulting lagged parent (super)sets:")
+                self._print_parents(all_parents, val_min, pval_max)
 
-            # Record the results for this variable
-            all_parents[j] = results[optimal_alpha]["parents"]
-            val_min[j] = results[optimal_alpha]["val_min"]
-            val_dict[j] = results[optimal_alpha]["val_dict"]
-            pval_max[j] = results[optimal_alpha]["pval_max"]
-            iterations[j] = results[optimal_alpha]["iterations"]
-
-            # Only save the optimal alpha if there is more than one pc_alpha
-            if select_optimal_alpha:
-                iterations[j]["optimal_pc_alpha"] = optimal_alpha
-
-        # Save the results in the current status of the algorithm
-        val_matrix = self._dict_to_matrix(val_dict, tau_max, self.N, default=0.0)
-        p_matrix = self._dict_to_matrix(pval_max, tau_max, self.N, default=1.0)
-
-        # Print the results
-        if self.verbosity > 0:
-            print("\n## Resulting lagged parent (super)sets:")
-            self._print_parents(all_parents, val_min, pval_max)
-
-        # Return the parents
-        return (all_parents, val_matrix, p_matrix, iterations, val_min, pval_max)
+            # Return the parents
+            return (all_parents, val_matrix, p_matrix, iterations, val_min, pval_max)

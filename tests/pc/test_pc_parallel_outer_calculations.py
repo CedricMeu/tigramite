@@ -1,10 +1,10 @@
 import pytest
 from tests import VERBOSITY, assert_graphs_equal, _select_links, a_sample
 from tigramite.independence_tests.parcorr import ParCorr
-from tigramite.pc.pcparallelinner import PCParallelInner
+from tigramite.pc.pcparallelouter import PCParallelOuter
 
 
-# PCParallelInner CONSTRUCTION ###########################################################
+# PCParallelOuter CONSTRUCTION ###########################################################
 @pytest.fixture(
     params=[
         # Keep parameters common for all the run_ algorithms here
@@ -28,7 +28,7 @@ def a_test():
 @pytest.fixture()
 # Fixture to build and return a parameterized PCMCI.  Different selected
 # variables can be defined here.
-def a_pcparallelinner(a_sample, a_test, a_common_params):
+def a_pcparallelouter(a_sample, a_test, a_common_params):
     # Unpack the test data and true parent graph
     dataframe, true_parents = a_sample
 
@@ -36,7 +36,7 @@ def a_pcparallelinner(a_sample, a_test, a_common_params):
     tau_min, tau_max, sel_link = a_common_params
 
     # Build the PCStable instance
-    pc = PCParallelInner(dataframe=dataframe, cond_ind_test=a_test, verbosity=VERBOSITY)
+    pc = PCParallelOuter(dataframe=dataframe, cond_ind_test=a_test, verbosity=VERBOSITY)
 
     # Select the correct links if they are given
     select_links = _select_links(sel_link, true_parents)
@@ -50,7 +50,7 @@ def a_pcparallelinner(a_sample, a_test, a_common_params):
     return pc, true_parents, tau_min, tau_max, select_links
 
 
-# PCParallelInner TESTING ############################################################
+# PCParallelOuter TESTING ############################################################
 @pytest.fixture(
     params=[
         # Keep parameters for the pc_stable algorithm here
@@ -68,9 +68,9 @@ def a_pc_stable_params(request):
 
 
 @pytest.fixture()
-def a_run_pc_parallel_inner(a_pcparallelinner, a_pc_stable_params):
+def a_run_pc_parallel_outer(a_pcparallelouter, a_pc_stable_params):
     # Unpack PC, true parents, and common parameters
-    pc, true_parents, tau_min, tau_max, _ = a_pcparallelinner
+    pc, true_parents, tau_min, tau_max, _ = a_pcparallelouter
 
     # Unpack the pc_stable parameters
     pc_alpha, max_conds_dim, max_combinations, save_iter = a_pc_stable_params
@@ -89,11 +89,11 @@ def a_run_pc_parallel_inner(a_pcparallelinner, a_pc_stable_params):
     return all_parents, true_parents
 
 
-def test_pc_parallel_inner(a_run_pc_parallel_inner):
+def test_pc_parallel_outer(a_run_pc_parallel_outer):
     """
     Test the pc_stable algorithm and check it calculates the correct parents.
     """
     # Unpack the calculated and true parents
-    parents, true_parents = a_run_pc_parallel_inner
+    parents, true_parents = a_run_pc_parallel_outer
     # Ensure they are the same
     assert_graphs_equal(parents, true_parents)

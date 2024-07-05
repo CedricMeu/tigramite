@@ -48,7 +48,7 @@ def run_cond_ind_test(
 
 
 class PCParallelInner(_PCBase):
-    def _run_pc_parallel_inner_single(
+    def __run_single(
         self,
         pool,
         j,
@@ -200,12 +200,9 @@ class PCParallelInner(_PCBase):
             for (parent, *_state_rest), _result in zip(
                 state,
                 pool.starmap(run_cond_ind_test, args),
-                # [run_cond_ind_test(*arg) for arg in args],
             ):
                 result[parent].append((*_state_rest, *_result))
 
-            # for parent, *rest in result:
-            #     print(parent, rest)
             for parent, rest in result.items():
                 for comb_index, Z, val, pval, dependent in rest:
                     # Print some information if needed
@@ -407,7 +404,7 @@ class PCParallelInner(_PCBase):
                             % (pc_alpha_here, iscore + 1, score.shape[0])
                         )
                     # Get the results for this alpha value
-                    results[pc_alpha_here] = self._run_pc_parallel_inner_single(
+                    results[pc_alpha_here] = self.__run_single(
                         pool,
                         j,
                         link_assumptions_j=_int_link_assumptions[j],
