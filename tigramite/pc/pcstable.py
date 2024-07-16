@@ -1,12 +1,12 @@
 from collections import defaultdict
 from copy import deepcopy
 from typing import Dict, List, Tuple
-from tigramite.pc import _PCBase
+from tigramite.pc import PCBase
 from tigramite import _create_nested_dictionary, _nested_to_normal
 import numpy as np
 
 
-class PCStable(_PCBase):
+class PCStable(PCBase):
     def __run_single(
         self,
         j,

@@ -10,10 +10,10 @@ import itertools
 from copy import deepcopy
 import numpy as np
 
-from tigramite.pcmci import _PCMCIBase
+from tigramite.pcmci import PCMCIBase
 
 
-class PCMCI(_PCMCIBase):
+class PCMCI(PCMCIBase):
     r"""PCMCI causal discovery for time series datasets.
 
     PCMCI is a causal discovery framework for large-scale time series
@@ -111,7 +111,7 @@ class PCMCI(_PCMCIBase):
 
     def __init__(self, dataframe, pc, cond_ind_test, verbosity=0):
         # Init base class
-        _PCMCIBase.__init__(
+        PCMCIBase.__init__(
             self,
             dataframe=dataframe,
             pc=pc,

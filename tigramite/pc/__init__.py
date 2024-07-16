@@ -1,14 +1,14 @@
 from abc import abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from typing_extensions import Self
-from tigramite import _CDAlgoBase
+from tigramite import CDAlgoBase
 import numpy as np
 import pandas as pd
 
 from tigramite.independence_tests.independence_tests_base import CondIndTest
 
 
-class _PCBase(_CDAlgoBase):
+class PCBase(CDAlgoBase):
     @abstractmethod
     def __call__(
         self,
@@ -31,7 +31,7 @@ class _PCBase(_CDAlgoBase):
         pass
 
 
-class _PCParallelBase(_PCBase):
+class PCParallelBase(PCBase):
     def __init__(
         self,
         dataframe: pd.DataFrame,

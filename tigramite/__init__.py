@@ -7,7 +7,7 @@ import pandas as pd
 from tigramite.independence_tests.independence_tests_base import CondIndTest
 
 
-class _CDAlgoBase:
+class CDAlgoBase:
     def __init__(
         self, dataframe: pd.DataFrame, cond_ind_test: CondIndTest, verbosity: int = 0
     ):

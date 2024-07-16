@@ -2,7 +2,7 @@ from collections import defaultdict
 from copy import deepcopy
 from multiprocessing import Pool
 from typing import Dict, List, Tuple
-from tigramite.pc import _PCParallelBase
+from tigramite.pc import PCParallelBase
 from tigramite import _create_nested_dictionary, _nested_to_normal
 import numpy as np
 
@@ -43,7 +43,7 @@ def _run_single_prepared(
     return result, score
 
 
-class PCParallelOuter(_PCParallelBase):
+class PCParallelOuter(PCParallelBase):
     def _run_single(
         self,
         j,

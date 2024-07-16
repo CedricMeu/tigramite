@@ -9,10 +9,10 @@ import itertools
 from copy import deepcopy
 import numpy as np
 from joblib import Parallel, delayed
-from tigramite import _CDAlgoBase
+from tigramite import CDAlgoBase
 
 
-class _PCMCIBase(_CDAlgoBase):
+class PCMCIBase(CDAlgoBase):
     r"""PCMCI base class.
 
     Parameters
