@@ -13,7 +13,7 @@ from tigramite.toymodels import structural_causal_processes as toys
 from tigramite.models import Prediction
 from tigramite.independence_tests.parcorr import ParCorr
 
-from pcmci.test_pcmci_calculations import a_chain, gen_data_frame
+from tests import a_chain, gen_data_frame
 
 # Pylint settings
 # pylint: disable=redefined-outer-name

@@ -2,7 +2,7 @@ from collections import defaultdict
 from copy import deepcopy
 from multiprocessing import Pool
 from typing import Dict, List, Tuple
-from tigramite.pc import _PCBase
+from tigramite.pc import _PCParallelBase
 from tigramite import _create_nested_dictionary, _nested_to_normal
 import numpy as np
 
@@ -43,7 +43,7 @@ def _run_single_prepared(
     return result, score
 
 
-class PCParallelOuter(_PCBase):
+class PCParallelOuter(_PCParallelBase):
     def _run_single(
         self,
         j,
@@ -352,7 +352,7 @@ class PCParallelOuter(_PCBase):
         # Set the maximum condition dimension
         max_conds_dim = self._set_max_condition_dim(max_conds_dim, tau_min, tau_max)
 
-        with Pool() as pool:
+        with Pool(processes=self.processes) as pool:
             state = []
             args = []
 

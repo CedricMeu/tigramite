@@ -1,6 +1,7 @@
 """
 Tests for independence_tests.py.
 """
+
 from __future__ import print_function
 import numpy as np
 import pytest
@@ -19,7 +20,7 @@ from tigramite.independence_tests.regressionCI import RegressionCI
 import tigramite.data_processing as pp
 from tigramite.toymodels import structural_causal_processes as toys
 
-from test_pcmci_calculations import a_chain, gen_data_frame
+from tests import a_chain, gen_data_frame
 
 # Pylint settings
 # pylint: disable=redefined-outer-name

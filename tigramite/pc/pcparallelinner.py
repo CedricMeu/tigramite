@@ -1,7 +1,7 @@
 from collections import defaultdict
 from copy import deepcopy
 from typing import Dict, List, Tuple
-from tigramite.pc import _PCBase
+from tigramite.pc import _PCParallelBase
 from tigramite import _create_nested_dictionary, _nested_to_normal
 import numpy as np
 
@@ -47,7 +47,7 @@ def _run_cond_ind_test(
     return val, pval, dependent
 
 
-class PCParallelInner(_PCBase):
+class PCParallelInner(_PCParallelBase):
     def __run_single(
         self,
         pool,

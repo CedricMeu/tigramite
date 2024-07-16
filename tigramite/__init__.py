@@ -2,10 +2,15 @@ from copy import deepcopy
 import itertools
 from collections import defaultdict
 import numpy as np
+import pandas as pd
+
+from tigramite.independence_tests.independence_tests_base import CondIndTest
 
 
 class _CDAlgoBase:
-    def __init__(self, dataframe, cond_ind_test, verbosity=0):
+    def __init__(
+        self, dataframe: pd.DataFrame, cond_ind_test: CondIndTest, verbosity: int = 0
+    ):
         self.dataframe = dataframe
 
         # Set the conditional independence test to be used
