@@ -383,7 +383,7 @@ class PCParallelInner(PCParallelBase):
         # Set the maximum condition dimension
         max_conds_dim = self._set_max_condition_dim(max_conds_dim, tau_min, tau_max)
 
-        with Pool() as pool:
+        with Pool(processes=self.processes) as pool:
             # Loop through the selected variables
             for j in range(self.N):
                 # Print the status of this variable
